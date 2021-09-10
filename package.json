@@ -1,0 +1,23 @@
+{
+  "name": "@subsquid/openreader",
+  "private": "true",
+  "scripts": {
+    "prepack": "tsc"
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "apollo-server": "^3.3.0",
+    "bn.js": "^5.2.0",
+    "graphql": "^15.5.2",
+    "graphql-fields": "^2.0.3",
+    "inflected": "^2.1.0",
+    "pg": "^8.7.1"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.0",
+    "@types/graphql-fields": "^1.3.4",
+    "@types/inflected": "^1.1.29",
+    "@types/pg": "^8.6.1",
+    "typescript": "^4.4.2"
+  }
+}
