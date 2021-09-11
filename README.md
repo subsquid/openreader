@@ -28,3 +28,20 @@ query {
   }
 }
 ```
+
+## Usage
+
+```bash
+openreader schema.graphql
+```
+
+Database connection and server port can be configured using hydra environment variables:
+
+```
+DB_NAME
+DB_USER
+DB_PASS
+DB_HOST
+DB_PORT
+GRAPHQL_SERVER_PORT
+```

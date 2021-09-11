@@ -1,6 +1,9 @@
 {
   "name": "@subsquid/openreader",
   "private": "true",
+  "bin": {
+    "openreader": "./dist/main.js"
+  },
   "scripts": {
     "prepack": "tsc"
   },

@@ -38,9 +38,8 @@ async function resolveEntityList(entityName: string, args: ListArgs, context: Re
     let fields = requestedFields(info)
     let query = new QueryBuilder(context)
     let sql = query.select(entityName, fields, args)
-    console.log(sql)
+    console.log('\n' + sql)
     let result = await context.db.query({text: sql, rowMode: 'array'}, query.params)
-    console.log(JSON.stringify(result.rows, null, 2))
     return query.toResult(result.rows, entityName, fields)
 }
 
