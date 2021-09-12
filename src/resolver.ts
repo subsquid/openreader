@@ -6,7 +6,7 @@ import type {ClientBase} from "pg"
 import type {Entity, Model} from "./model"
 import {fromStringCast, getScalarResolvers, toStringCast} from "./scalars"
 import {toColumn, toFkColumn, toQueryListField, toTable} from "./util"
-import {hasConditions, parseWhereField} from "./where"
+import {hasConditions, parseWhereField, whereOpToSqlOperator} from "./where"
 
 
 export interface ResolverContext {
@@ -37,7 +37,7 @@ export interface ListArgs {
 async function resolveEntityList(entityName: string, args: ListArgs, context: ResolverContext, info: GraphQLResolveInfo): Promise<any[]> {
     let fields = requestedFields(info)
     let query = new QueryBuilder(context)
-    let sql = query.select(entityName, fields, args)
+    let sql = query.select(entityName, args, fields)
     console.log('\n' + sql)
     let result = await context.db.query({text: sql, rowMode: 'array'}, query.params)
     return query.toResult(result.rows, entityName, fields)
@@ -116,21 +116,25 @@ class QueryBuilder {
         return this.db.escapeIdentifier(name)
     }
 
-    select(entityName: string, fields: RequestedFields, args: ListArgs, subquery?: ListSubquery): string {
+    select(entityName: string, args: ListArgs, fields?: RequestedFields, subquery?: ListSubquery): string {
         let entity = this.model[entityName]
         let table = toTable(entityName)
         let alias = this.aliases.add(table)
         let join = new FkJoinSet(this.aliases)
         let whereExp = ''
+        let out = ''
 
-        let columns: string[] = []
-        this.populateColumns(columns, fields, alias, entity, join)
-        let columnExp = columns.join(', ')
-        if (subquery) {
-            columnExp = `jsonb_build_array(${columnExp})`
+        if (fields) {
+            let columns: string[] = []
+            this.populateColumns(columns, fields, alias, entity, join)
+            let columnExp = columns.join(', ')
+            if (subquery) {
+                columnExp = `jsonb_build_array(${columnExp})`
+            }
+            out += 'SELECT ' + columnExp + '\n'
         }
 
-        let out = `SELECT ${columnExp}\nFROM ${this.ident(table)} ${this.ident(alias)}`
+        out += `FROM ${this.ident(table)} ${this.ident(alias)}`
 
         if (hasConditions(args.where)) {
             whereExp = this.generateWhere(alias, entity, args.where, join)
@@ -158,7 +162,7 @@ class QueryBuilder {
         }
 
         if (subquery) {
-            out = '(' + out.replace(/\n/g, ' ') + ')'
+            out = out.replace(/\n/g, ' ')
         }
 
         return out
@@ -194,12 +198,10 @@ class QueryBuilder {
                         break
                     case 'LIST':
                         columns.push(
-                            'array' + this.select(
-                                rel.entity,
-                                fields[key],
-                                toListArgs(fields[key].__arguments),
-                                {field: rel.field, parent: alias}
-                            )
+                            'array(' + this.select(rel.entity, toListArgs(fields[key].__arguments), fields[key], {
+                                field: rel.field,
+                                parent: alias
+                            }) + ')'
                         )
                         break
                 }
@@ -226,11 +228,51 @@ class QueryBuilder {
                     )
                 }
             } else {
-                let value = conditions[key]
+                let op_arg = conditions[key]
                 let f = parseWhereField(key)
-                let param = this.param(value)
-                let scalarType = entity.columns[f.field].graphqlType
-                exps.push(`${this.ident(alias)}.${this.ident(f.field)} ${f.op} ${fromStringCast(scalarType, param)}`)
+                switch(f.op) {
+                    case 'every':
+                        if (hasConditions(op_arg)) {
+                            let rel = entity.relations[f.field]
+                            assert(rel.type == 'LIST')
+                            let conditionedFrom = this.select(
+                                rel.entity,
+                                {where: op_arg},
+                                undefined,
+                                {parent: alias, field: rel.field}
+                            )
+                            let allFrom = this.select(
+                                rel.entity,
+                                {},
+                                undefined,
+                                {parent: alias, field: rel.field}
+                            )
+                            exps.push(`(SELECT count(*) ${conditionedFrom}) = (SELECT count(*) ${allFrom})`)
+                        }
+                        break
+                    case 'some':
+                    case 'none':
+                        let rel = entity.relations[f.field]
+                        assert(rel.type == 'LIST')
+                        let q = '(SELECT true ' + this.select(
+                            rel.entity,
+                            {where: op_arg, limit: 1},
+                            undefined,
+                            {parent: alias, field: rel.field}
+                        ) + ')'
+                        if (f.op == 'some') {
+                            exps.push(q)
+                        } else {
+                            exps.push(`(SELECT count(*) FROM ${q} ${this.ident(this.aliases.add(key))}) = 0`)
+                        }
+                        break
+                    default: {
+                        let sql_op = whereOpToSqlOperator(f.op)
+                        let scalarType = entity.columns[f.field].graphqlType
+                        let param = fromStringCast(scalarType, this.param(op_arg))
+                        exps.push(`${this.ident(alias)}.${this.ident(f.field)} ${sql_op} ${param}`)
+                    }
+                }
             }
         }
         if (AND) {

@@ -1,3 +1,16 @@
+/**
+ * The current concept of custom scalars is as follows:
+ *
+ * Each custom scalar type has canonical string representation which is used every where:
+ *    in JSON requests/responses
+ *    in graphql schemas
+ *    for database io
+ *    for intermediate resolver values
+ *
+ * Because our canonical representations are used in SQL query parameters and results,
+ * database must support 2 way coercions between those and underlying database types.
+ */
+
 import {IResolvers} from "@graphql-tools/utils"
 import {GraphQLScalarType} from "graphql"
 import BN from "bn.js"

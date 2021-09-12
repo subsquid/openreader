@@ -1,4 +1,19 @@
 
+export type WhereOp =
+    'eq' | 'not_eq' |
+    'gt' |
+    'gte' |
+    'lt' |
+    'lte' |
+    'in' | 'not_in' |
+    'contains' | 'not_contains' |
+    'starts_with' | 'not_starts_with' |
+    'ends_with' | 'not_ends_with' |
+    'some' |
+    'every' |
+    'none'
+
+
 const ENDINGS = [
     'not',
     'gt',
@@ -12,40 +27,25 @@ const ENDINGS = [
     'starts_with',
     'not_starts_with',
     'ends_with',
-    'not_ends_with'
+    'not_ends_with',
+    'some',
+    'every',
+    'none'
 ]
 
 
 const OPS_REGEX = new RegExp(`^(.*)_(${ENDINGS.join('|')})$`)
 
 
-function endingToOperator(ending: string): string {
-    switch(ending) {
-        case 'not':
-            return '!='
-        case 'gt':
-            return '>'
-        case 'gte':
-            return '>='
-        case 'lt':
-            return '<'
-        case 'lte':
-            return '<='
-        case 'in':
-            return 'IN'
-        case 'not_in':
-            return 'NOT IN'
-        default:
-            throw new Error('Unsupported operator: ' + ending)
-    }
-}
-
-
-export function parseWhereField(field: string): {op: string, field: string} {
+export function parseWhereField(field: string): {op: WhereOp, field: string} {
     let m = OPS_REGEX.exec(field)
-    if (!m) return {op: '=', field}
+    if (!m) return {op: 'eq', field}
+    if (m[2] == 'not') return {
+        op: 'not_eq',
+        field: m[1]
+    }
     return {
-        op: endingToOperator(m[2]),
+        op: m[2] as WhereOp,
         field: m[1]
     }
 }
@@ -62,7 +62,39 @@ export function hasConditions(where?: any): where is any {
                 return true
         }
     }
-    if (where.AND && where.AND.some(hasConditions)) return true
-    if (where.OR && where.OR.some(hasConditions)) return true
+    if (Array.isArray(where.AND)) {
+        if (where.AND.some(hasConditions)) return true
+    } else if (where.AND && hasConditions(where.AND)) {
+        return true
+    }
+    if (Array.isArray(where.OR)) {
+        if (where.OR.some(hasConditions)) return true
+    } else if (where.OR && hasConditions(where.OR)) {
+        return true
+    }
     return false
+}
+
+
+export function whereOpToSqlOperator(op: WhereOp): string {
+    switch(op) {
+        case 'eq':
+            return '='
+        case 'not_eq':
+            return '!='
+        case 'gt':
+            return '>'
+        case 'gte':
+            return '>='
+        case 'lt':
+            return '<'
+        case 'lte':
+            return '<='
+        case 'in':
+            return 'IN'
+        case 'not_in':
+            return 'NOT IN'
+        default:
+            throw new Error(`Operator ${op} doesn't have SQL analog`)
+    }
 }
