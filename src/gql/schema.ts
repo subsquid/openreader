@@ -1,23 +1,32 @@
+import {gql} from "apollo-server"
+import assert from "assert"
 import {
     buildASTSchema,
     DocumentNode,
-    extendSchema, GraphQLField, GraphQLList,
+    extendSchema,
+    GraphQLEnumType,
+    GraphQLField,
+    GraphQLList,
     GraphQLNamedType,
     GraphQLNonNull,
-    GraphQLObjectType, GraphQLScalarType,
-    GraphQLSchema
+    GraphQLObjectType,
+    GraphQLOutputType,
+    GraphQLScalarType,
+    GraphQLSchema,
+    GraphQLUnionType
 } from "graphql"
 import {DirectiveNode} from "graphql/language/ast"
-import {gql} from "apollo-server"
-import assert from "assert"
-import {ColumnType, Entity, Model, Relations} from "../model"
+import {Model, Prop, PropType, Relations} from "../model"
 import {scalars_list} from "../scalars"
 import {weakMemo} from "../util"
 
 
 const baseSchema = buildASTSchema(gql(`
-    directive @entity on OBJECT | INTERFACE
+    directive @entity on OBJECT
     directive @derivedFrom(field: String!) on FIELD_DEFINITION
+    directive @unique on FIELD_DEFINITION
+    directive @fulltext(query: String!) on FIELD_DEFINITION
+    directive @variant on OBJECT # legacy
     ${scalars_list.map(name => 'scalar ' + name).join('\n')}
 `))
 
@@ -36,72 +45,190 @@ export function buildModel(schema: GraphQLSchema): Model {
     for (let key in types) {
         let type = types[key]
         if (isEntityType(type)) {
-            model[key] = buildEntity(type)
+            addEntityOrJsonObject(model, type as GraphQLObjectType)
         }
     }
     return model
 }
 
 
-function isEntityType(type: GraphQLNamedType): type is GraphQLObjectType {
+function isEntityType(type: GraphQLNamedType): boolean {
     return type instanceof GraphQLObjectType && !!type.astNode?.directives?.some(d => d.name.value == 'entity')
 }
 
 
-function buildEntity(type: GraphQLObjectType): Entity {
-    let columns: Record<string, ColumnType> = {}
+function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
+    if (model[type.name]) return
+    let kind: 'entity' | 'object' = isEntityType(type) ? 'entity' : 'object'
+    let properties: Record<string, Prop> = {}
     let relations: Relations = {}
     let fields = type.getFields()
+    if (kind == 'entity') {
+        if (fields.id == null) {
+            properties.id = {
+                type: {kind: 'scalar', name: 'ID'},
+                nullable: false
+            }
+        } else {
+            let correctIdType = fields.id.type instanceof GraphQLNonNull
+                && fields.id.type.ofType instanceof GraphQLScalarType
+                && fields.id.type.ofType.name === 'ID'
+            if (!correctIdType) {
+                throw unsupportedFieldError(type.name, 'id')
+            }
+        }
+    }
     for (let key in fields) {
         let f: GraphQLField<any, any> = fields[key]
         let fieldType = f.type
-        let isList = false
-        let isNullable = true
+        let nullable = true
         if (fieldType instanceof GraphQLNonNull) {
-            isNullable = false
+            nullable = false
             fieldType = fieldType.ofType
         }
-        if (fieldType instanceof GraphQLList) {
-            isList = true
-            fieldType = fieldType.ofType
-            if (fieldType instanceof GraphQLNonNull) {
-                fieldType = fieldType.ofType
-            }
-        }
+        let list = unwrapList(fieldType)
+        fieldType = list.item
         if (fieldType instanceof GraphQLScalarType) {
-            if (isList) throw unsupportedFieldError(type.name, key)
-            columns[key] = {
-                graphqlType: fieldType.name,
-                nullable: isNullable
+            properties[key] = {
+                type: wrapWithList(list.nulls, {
+                    kind: 'scalar',
+                    name: fieldType.name
+                }),
+                nullable
+            }
+        } else if (fieldType instanceof GraphQLEnumType) {
+            addEnum(model, fieldType)
+            properties[key] = {
+                type: wrapWithList(list.nulls, {
+                    kind: 'enum',
+                    name: fieldType.name
+                }),
+                nullable
+            }
+        } else if (fieldType instanceof GraphQLUnionType) {
+            addUnion(model, fieldType)
+            properties[key] = {
+                type: wrapWithList(list.nulls, {
+                    kind: 'union',
+                    name: fieldType.name
+                }),
+                nullable
             }
         } else if (fieldType instanceof GraphQLObjectType) {
-            if (!isEntityType(fieldType)) throw unsupportedFieldError(type.name, key)
-            if (isList) {
-                let derivedFrom: DirectiveNode | undefined = f.astNode?.directives?.find(d => d.name.value == 'derivedFrom')
-                if (derivedFrom == null) {
-                    throw new Error(`@derivedFrom directive is required on ${type.name}.${key} declaration`)
-                }
-                let derivedFromValueNode = derivedFrom.arguments?.[0].value
-                assert(derivedFromValueNode != null)
-                assert(derivedFromValueNode.kind == 'StringValue')
-                relations[key] = {
-                    type: 'LIST',
-                    entity: fieldType.name,
-                    field: derivedFromValueNode.value,
-                    nullable: isNullable
+            if (isEntityType(fieldType)) {
+                if (kind != 'entity') throw unsupportedFieldError(type.name, key)
+                switch(list.nulls.length) {
+                    case 0:
+                        relations[key] = {
+                            type: 'FK',
+                            foreignEntity: fieldType.name,
+                            nullable
+                        }
+                        break
+                    case 1:
+                        let derivedFrom: DirectiveNode | undefined = f.astNode?.directives?.find(d => d.name.value == 'derivedFrom')
+                        if (derivedFrom == null) {
+                            throw new Error(`@derivedFrom directive is required on ${type.name}.${key} declaration`)
+                        }
+                        let derivedFromValueNode = derivedFrom.arguments?.[0].value
+                        assert(derivedFromValueNode != null)
+                        assert(derivedFromValueNode.kind == 'StringValue')
+                        relations[key] = {
+                            type: 'LIST',
+                            entity: fieldType.name,
+                            field: derivedFromValueNode.value
+                        }
+                        break
+                    default:
+                        throw unsupportedFieldError(type.name, key)
                 }
             } else {
-                relations[key] = {
-                    type: 'FK',
-                    foreignEntity: fieldType.name,
-                    nullable: isNullable
+                addEntityOrJsonObject(model, fieldType)
+                properties[key] = {
+                    type: wrapWithList(list.nulls, {
+                        kind: 'object',
+                        name: fieldType.name
+                    }),
+                    nullable
                 }
             }
         } else {
             throw unsupportedFieldError(type.name, key)
         }
     }
-    return {columns, relations}
+    if (kind == 'entity') {
+        model[type.name] = {
+            kind,
+            properties,
+            relations
+        }
+    } else {
+        model[type.name] = {
+            kind,
+            properties
+        }
+    }
+}
+
+
+function addUnion(model: Model, type: GraphQLUnionType): void {
+    if (model[type.name]) return
+    let variants: string[] = []
+    type.getTypes().forEach(obj => {
+        if (isEntityType(obj)) {
+            throw new Error(`union ${type.name} has entity ${obj.name} as a variant. Entities in union types are not supported`)
+        }
+        addEntityOrJsonObject(model, obj)
+        variants.push(obj.name)
+    })
+    model[type.name] = {
+        kind: 'union',
+        variants
+    }
+}
+
+
+function addEnum(model: Model, type: GraphQLEnumType): void {
+    if (model[type.name]) return
+    let values: Record<string, {}> = {}
+    type.getValues().forEach(item => {
+        values[item.name] = {}
+    })
+    model[type.name] = {
+        kind: 'enum',
+        values
+    }
+}
+
+
+function unwrapList(type: GraphQLOutputType): DeepList {
+    let nulls: boolean[] = []
+    while (type instanceof GraphQLList) {
+        type = type.ofType
+        if (type instanceof GraphQLNonNull) {
+            nulls.push(false)
+            type = type.ofType
+        } else {
+            nulls.push(true)
+        }
+    }
+    return {item: type, nulls}
+}
+
+
+interface DeepList {
+    item: GraphQLOutputType
+    nulls: boolean[]
+}
+
+
+function wrapWithList(nulls: boolean[], dataType: PropType): PropType {
+    if (nulls.length == 0) return dataType
+    return {
+        kind: 'list',
+        item: wrapWithList(nulls.slice(1), dataType),
+        nullableItem: nulls[0]
+    }
 }
 
 

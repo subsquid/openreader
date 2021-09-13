@@ -116,8 +116,14 @@ class QueryBuilder {
         return this.db.escapeIdentifier(name)
     }
 
+    private entity(entityName: string): Entity {
+        let e = this.model[entityName]
+        assert(e.kind == 'entity')
+        return e
+    }
+
     select(entityName: string, args: ListArgs, fields?: RequestedFields, subquery?: ListSubquery): string {
-        let entity = this.model[entityName]
+        let entity = this.entity(entityName)
         let table = toTable(entityName)
         let alias = this.aliases.add(table)
         let join = new FkJoinSet(this.aliases)
@@ -173,13 +179,19 @@ class QueryBuilder {
             if (key == '__arguments') {
                 continue
             }
-            if (entity.columns[key]) {
-                columns.push(
-                    toStringCast(
-                        entity.columns[key].graphqlType,
-                        this.ident(alias) + '.' + this.ident(toColumn(key))
-                    )
-                )
+            if (entity.properties[key]) {
+                let prop = entity.properties[key]
+                switch(prop.type.kind) {
+                    case 'scalar':
+                    case 'enum':
+                        columns.push(
+                            toStringCast(
+                                prop.type.name,
+                                this.ident(alias) + '.' + this.ident(toColumn(key))
+                            )
+                        )
+                        break
+                }
             } else {
                 let rel = entity.relations[key]
                 switch(rel.type) {
@@ -192,7 +204,7 @@ class QueryBuilder {
                                 alias,
                                 toFkColumn(key)
                             ),
-                            this.model[rel.foreignEntity],
+                            this.entity(rel.foreignEntity),
                             join
                         )
                         break
@@ -221,7 +233,7 @@ class QueryBuilder {
                     exps.push(
                         this.generateWhere(
                             join.add(toTable(rel.foreignEntity), alias, toFkColumn(key)),
-                            this.model[rel.foreignEntity],
+                            this.entity(rel.foreignEntity),
                             f_where,
                             join
                         )
@@ -268,8 +280,9 @@ class QueryBuilder {
                         break
                     default: {
                         let sql_op = whereOpToSqlOperator(f.op)
-                        let scalarType = entity.columns[f.field].graphqlType
-                        let param = fromStringCast(scalarType, this.param(op_arg))
+                        let prop = entity.properties[f.field]
+                        assert(prop.type.kind == 'scalar' || prop.type.kind == 'enum')
+                        let param = fromStringCast(prop.type.name, this.param(op_arg))
                         exps.push(`${this.ident(alias)}.${this.ident(f.field)} ${sql_op} ${param}`)
                     }
                 }
@@ -308,7 +321,7 @@ class QueryBuilder {
     }
 
     toResult(rows: any[][], entityName: string, fields: RequestedFields): any[] {
-        let entity = this.model[entityName]
+        let entity = this.entity(entityName)
         let out: any[] = new Array(rows.length)
         for (let i = 0; i < rows.length; i++) {
             out[i] = this.mapRow(rows[i], 0, entity, fields).rec
@@ -322,14 +335,14 @@ class QueryBuilder {
             if (key == '__arguments') {
                 continue
             }
-            if (entity.columns[key]) {
+            if (entity.properties[key]) {
                 rec[key] = row[idx]
                 idx += 1
             } else {
                 let rel = entity.relations[key]
                 switch(rel.type) {
                     case 'FK':
-                        let m = this.mapRow(row, idx, this.model[rel.foreignEntity], fields[key])
+                        let m = this.mapRow(row, idx, this.entity(rel.foreignEntity), fields[key])
                         rec[key] = m.rec
                         idx = m.idx
                         break
