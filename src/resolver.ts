@@ -18,6 +18,7 @@ export interface ResolverContext {
 export function buildResolvers(model: Model): IResolvers {
     let Query: Record<string, IFieldResolver<unknown, ResolverContext>> = {}
     for (let name in model) {
+        if (model[name].kind != 'entity') continue
         Query[toQueryListField(name)] = (source, args, context, info) => {
             return resolveEntityList(name, args, context, info)
         }
