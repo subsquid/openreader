@@ -3,10 +3,11 @@ import assert from "assert"
 import type {GraphQLResolveInfo, KindEnum} from "graphql"
 import graphqlFields from "graphql-fields"
 import type {ClientBase} from "pg"
-import type {Entity, Model} from "./model"
-import {fromStringCast, getScalarResolvers, toStringCast} from "./scalars"
+import type {Entity, JsonObject, Model, Prop, PropType, Union} from "./model"
+import {getUnionProps} from "./model.tools"
+import {fromJsonCast, fromStringCast, getScalarResolvers, toStringCast} from "./scalars"
 import {toColumn, toFkColumn, toQueryListField, toTable} from "./util"
-import {hasConditions, parseWhereField, whereOpToSqlOperator} from "./where"
+import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
 
 
 export interface ResolverContext {
@@ -17,13 +18,27 @@ export interface ResolverContext {
 
 export function buildResolvers(model: Model): IResolvers {
     let Query: Record<string, IFieldResolver<unknown, ResolverContext>> = {}
+    let unions: Record<string, any> = {}
     for (let name in model) {
-        if (model[name].kind != 'entity') continue
-        Query[toQueryListField(name)] = (source, args, context, info) => {
-            return resolveEntityList(name, args, context, info)
+        switch(model[name].kind) {
+            case 'entity':
+                Query[toQueryListField(name)] = (source, args, context, info) => {
+                    return resolveEntityList(name, args, context, info)
+                }
+                break
+            case 'union':
+                unions[name] = {
+                    __resolveType: resolveUnionType
+                }
+                break
         }
     }
-    return {Query, ...getScalarResolvers()}
+    return {Query, ...unions, ...getScalarResolvers()}
+}
+
+
+function resolveUnionType(obj: any): string {
+    return obj.isTypeOf
 }
 
 
@@ -123,6 +138,18 @@ class QueryBuilder {
         return e
     }
 
+    private object(objectName: string): JsonObject {
+        let object = this.model[objectName]
+        assert(object.kind == 'object')
+        return object
+    }
+
+    private union(unionName: string): Union {
+        let union = this.model[unionName]
+        assert(union.kind == 'union')
+        return union
+    }
+
     select(entityName: string, args: ListArgs, fields?: RequestedFields, subquery?: ListSubquery): string {
         let entity = this.entity(entityName)
         let table = toTable(entityName)
@@ -133,7 +160,7 @@ class QueryBuilder {
 
         if (fields) {
             let columns: string[] = []
-            this.populateColumns(columns, fields, alias, entity, join)
+            this.populateColumns(columns, join, fields, alias, '', entity)
             let columnExp = columns.join(', ')
             if (subquery) {
                 columnExp = `jsonb_build_array(${columnExp})`
@@ -175,39 +202,69 @@ class QueryBuilder {
         return out
     }
 
-    private populateColumns(columns: string[], fields: RequestedFields, alias: string, entity: Entity, join: FkJoinSet): void {
+    private populateColumns(
+        columns: string[],
+        join: FkJoinSet,
+        fields: RequestedFields,
+        alias: string,
+        prefix: string,
+        object: Entity | JsonObject
+    ): void {
         for (let key in fields) {
             if (key == '__arguments') {
                 continue
             }
-            if (entity.properties[key]) {
-                let prop = entity.properties[key]
+            if (object.properties[key]) {
+                let prop = object.properties[key]
+
+                let col = object.kind == 'entity'
+                    ? this.ident(alias) + '.' + this.ident(toColumn(key))
+                    : `${prefix}->'${key}'`
+
                 switch(prop.type.kind) {
                     case 'scalar':
                     case 'enum':
-                        columns.push(
-                            toStringCast(
-                                prop.type.name,
-                                this.ident(alias) + '.' + this.ident(toColumn(key))
-                            )
+                        if (object.kind == 'entity') {
+                            columns.push(toStringCast(prop.type.name, col))
+                        } else {
+                            columns.push(col)
+                        }
+                        break
+                    case 'object':
+                        this.populateColumns(
+                            columns,
+                            join,
+                            fields[key],
+                            alias,
+                            col,
+                            this.object(prop.type.name)
+                        )
+                        break
+                    case 'union':
+                        columns.push(`${col}->'isTypeOf'`)
+                        this.populateColumns(
+                            columns,
+                            join,
+                            fields[key],
+                            alias,
+                            col,
+                            this.getUnionObject(prop.type.name)
                         )
                         break
                 }
             } else {
-                let rel = entity.relations[key]
+                assert(object.kind == 'entity')
+                let rel = object.relations[key]
                 switch(rel.type) {
                     case 'FK':
-                        this.populateColumns(
-                            columns,
-                            fields[key],
-                            join.add(
-                                toTable(rel.foreignEntity),
-                                alias,
-                                toFkColumn(key)
-                            ),
-                            this.entity(rel.foreignEntity),
-                            join
+                        let {id, ...restFields} = fields[key]
+                        let fa = join.add(
+                            toTable(rel.foreignEntity),
+                            alias,
+                            toFkColumn(key)
                         )
+                        columns.push(this.ident(fa) + '."id"')
+                        this.populateColumns(columns, join, restFields, fa, '', this.entity(rel.foreignEntity))
                         break
                     case 'LIST':
                         columns.push(
@@ -241,16 +298,16 @@ class QueryBuilder {
                     )
                 }
             } else {
-                let op_arg = conditions[key]
+                let opArg = conditions[key]
                 let f = parseWhereField(key)
                 switch(f.op) {
                     case 'every':
-                        if (hasConditions(op_arg)) {
+                        if (hasConditions(opArg)) {
                             let rel = entity.relations[f.field]
                             assert(rel.type == 'LIST')
                             let conditionedFrom = this.select(
                                 rel.entity,
-                                {where: op_arg},
+                                {where: opArg},
                                 undefined,
                                 {parent: alias, field: rel.field}
                             )
@@ -269,7 +326,7 @@ class QueryBuilder {
                         assert(rel.type == 'LIST')
                         let q = '(SELECT true ' + this.select(
                             rel.entity,
-                            {where: op_arg, limit: 1},
+                            {where: opArg, limit: 1},
                             undefined,
                             {parent: alias, field: rel.field}
                         ) + ')'
@@ -280,11 +337,9 @@ class QueryBuilder {
                         }
                         break
                     default: {
-                        let sql_op = whereOpToSqlOperator(f.op)
                         let prop = entity.properties[f.field]
-                        assert(prop.type.kind == 'scalar' || prop.type.kind == 'enum')
-                        let param = fromStringCast(prop.type.name, this.param(op_arg))
-                        exps.push(`${this.ident(alias)}.${this.ident(f.field)} ${sql_op} ${param}`)
+                        assert(prop != null)
+                        this.addPropCondition(exps, alias, f.field, prop.type, f.op, opArg)
                     }
                 }
             }
@@ -321,6 +376,58 @@ class QueryBuilder {
         }
     }
 
+    private addPropCondition(exps: string[], aliasOrPrefix: string, field: string, propType: PropType, op: WhereOp, arg: any, isJson?: boolean): void {
+        let lhs = isJson
+            ? `${aliasOrPrefix}->'${field}'`
+            : this.ident(aliasOrPrefix) + '.' + this.ident(toColumn(field))
+
+        switch(propType.kind) {
+            case 'scalar':
+            case 'enum': {
+                let sqlOp = whereOpToSqlOperator(op)
+                let param = fromStringCast(propType.name, this.param(arg))
+                if (isJson) {
+                    lhs = fromJsonCast(propType.name, lhs)
+                }
+                exps.push(`${lhs} ${sqlOp} ${param}`)
+                return
+            }
+            case 'union': {
+                assert(op == 'eq') // meaning no operator
+                for (let key in arg) {
+                    let f = parseWhereField(key)
+                    let unionPropType = this.getUnionPropType(propType.name, f.field)
+                    this.addPropCondition(exps, lhs, f.field, unionPropType, f.op, arg[key], true)
+                }
+                return
+            }
+            case 'object': {
+                assert(op == 'eq') // meaning no operator
+                let object = this.object(propType.name)
+                for (let key in arg) {
+                    let f = parseWhereField(key)
+                    this.addPropCondition(exps, lhs, f.field, object.properties[f.field].type, f.op, arg[key], true)
+                }
+                return
+            }
+            default:
+                throw new Error(`Where condition on field ${field} of kind ${propType.kind}`)
+        }
+    }
+
+    private getUnionPropType(unionName: string, name: string): PropType {
+        if (name == 'isTypeOf') return {kind: 'scalar', name: 'String'}
+        let prop = this.getUnionObject(unionName).properties[name]
+        if (prop == null) {
+            throw new Error(`Unknown property ${name} on union ${unionName}`)
+        }
+        return prop.type
+    }
+
+    private getUnionObject(unionName: string): JsonObject {
+        return getUnionProps(this.model, unionName)
+    }
+
     toResult(rows: any[][], entityName: string, fields: RequestedFields): any[] {
         let entity = this.entity(entityName)
         let out: any[] = new Array(rows.length)
@@ -330,22 +437,56 @@ class QueryBuilder {
         return out
     }
 
-    private mapRow(row: any[], idx: number, entity: Entity, fields: RequestedFields): {rec: any, idx: any} {
+    private mapRow(row: any[], idx: number, object: Entity | JsonObject, fields: RequestedFields): {rec: any, idx: any} {
         let rec: any = {}
         for (let key in fields) {
             if (key == '__arguments') {
                 continue
             }
-            if (entity.properties[key]) {
-                rec[key] = row[idx]
-                idx += 1
-            } else {
-                let rel = entity.relations[key]
-                switch(rel.type) {
-                    case 'FK':
-                        let m = this.mapRow(row, idx, this.entity(rel.foreignEntity), fields[key])
+            if (object.properties[key]) {
+                let prop = object.properties[key]
+                switch(prop.type.kind) {
+                    case 'scalar':
+                    case 'enum':
+                        rec[key] = row[idx]
+                        idx += 1
+                        break
+                    case 'object': {
+                        let m = this.mapRow(row, idx, this.object(prop.type.name), fields[key])
                         rec[key] = m.rec
                         idx = m.idx
+                        break
+                    }
+                    case 'union': {
+                        let isTypeOf = row[idx]
+                        idx += 1
+                        let m = this.mapRow(row, idx, this.getUnionObject(prop.type.name), fields[key])
+                        idx = m.idx
+                        if (isTypeOf != null) {
+                            m.rec.isTypeOf = isTypeOf
+                            rec[key] = m.rec
+                        }
+                        break
+                    }
+                    default:
+                        throw new Error(`Property ${key} has unsupported kind ${prop.type.kind}`)
+                }
+            } else {
+                assert(object.kind == 'entity')
+                let rel = object.relations[key]
+                switch(rel.type) {
+                    case 'FK':
+                        let {id: _id, ...restFields} = fields[key]
+                        let id = row[idx]
+                        idx += 1
+                        let m = this.mapRow(row, idx, this.entity(rel.foreignEntity), restFields)
+                        idx = m.idx
+                        if (id != null) {
+                            // the mapping above is valid only if entity actually exists,
+                            // otherwise all props are just nulls
+                            m.rec.id = id
+                            rec[key] = m.rec
+                        }
                         break
                     case 'LIST':
                         rec[key] = this.toResult(row[idx], rel.entity, fields[key])

@@ -4,7 +4,7 @@ import {DocumentNode, GraphQLEnumType, GraphQLSchema} from "graphql"
 import {Entity, Enum, JsonObject, Prop, PropType, Relation, Union} from "../model"
 import {scalars_list} from "../scalars"
 import {lowerCaseFirst, Output, pluralize} from "../util"
-import {getModel} from "./schema"
+import {getModel, propTypeEquals} from "./schema"
 
 
 export function generateOpenCrudQueries(schema: GraphQLSchema): string {
@@ -95,9 +95,9 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 for (let key in object.relations) {
                     generateRelationFilters(key, object.relations[key])
                 }
+                out.line(`AND: [${name}WhereInput!]`)
+                out.line(`OR: [${name}WhereInput!]`)
             }
-            out.line(`AND: [${name}WhereInput!]`)
-            out.line(`OR: [${name}WhereInput!]`)
         })
         out.line()
     }
@@ -156,18 +156,7 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
             let props: Record<string, Prop> = {}
             union.variants.forEach(variant => {
                 let obj = getObject(variant)
-                let conflicts = new Set<string>()
-                for (let key in obj.properties) {
-                    let prop = obj.properties[key]
-                    if (props[key] == null) {
-                        props[key] = prop
-                    } else if (!propTypeEquals(prop.type, props[key].type)) {
-                        conflicts.add(key)
-                    }
-                }
-                conflicts.forEach(key => {
-                    delete props[key]
-                })
+                Object.assign(props, obj.properties)
             })
 
             generatePropsFilters(props)
@@ -236,13 +225,6 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
     }
 
     return out.toString()
-}
-
-
-function propTypeEquals(a: PropType, b: PropType): boolean {
-    if (a.kind != b.kind) return false
-    if (a.kind == 'list') return propTypeEquals(a.item, (b as typeof a).item)
-    return a.name == (b as typeof a).name
 }
 
 

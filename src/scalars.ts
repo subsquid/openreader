@@ -49,10 +49,10 @@ export const scalars: Record<string, Scalar> = {
             }
         }),
         fromStringCast(exp) {
-            return exp + '::numeric'
+            return `(${exp})::numeric`
         },
         toStringCast(exp) {
-            return exp + '::text'
+            return `(${exp})::text`
         }
     }
 }
@@ -86,5 +86,19 @@ export function fromStringCast(scalarType: string, sqlExp: string): string {
         return s.fromStringCast(sqlExp)
     } else {
         return sqlExp
+    }
+}
+
+
+export function fromJsonCast(scalarType: string, sqlExp: string): string {
+    switch(scalarType) {
+        case 'ID':
+        case 'String':
+            return `(${sqlExp})::text`
+        case 'Int':
+        case 'Float':
+            return `(${sqlExp})::numeric`
+        default:
+            return fromStringCast(scalarType, sqlExp)
     }
 }

@@ -48,6 +48,7 @@ export function buildModel(schema: GraphQLSchema): Model {
             addEntityOrJsonObject(model, type as GraphQLObjectType)
         }
     }
+    validateUnionTypes(model)
     return model
 }
 
@@ -237,18 +238,31 @@ function unsupportedFieldError(type: string, field: string): Error {
 }
 
 
-// console.log(JSON.stringify(buildModel(buildSchema(gql`
-//     type Account @entity {
-//         id: ID!
-//         contributions: [Contribution!] @derivedFrom(field: "account")
-//     }
-//     type Contribution @entity {
-//         id: ID!
-//         account: Account!
-//         balance: Int!
-//     }
-//     type Query {
-//         accounts: [Account!]!
-//         contributions: [Contribution!]!
-//     }
-// `)), null, 2))
+function validateUnionTypes(model: Model): void {
+    for (let key in model) {
+        let item = model[key]
+        if (item.kind != 'union') continue
+        let properties: Record<string, {objectName: string, type: PropType}> = {}
+        item.variants.forEach(objectName => {
+            let object = model[objectName]
+            assert(object.kind == 'object')
+            for (let propName in object.properties) {
+                let rec = properties[propName]
+                if (rec && !propTypeEquals(rec.type, object.properties[propName].type)) {
+                    throw new Error(
+                        `${rec.objectName} and ${objectName} variants of union ${key} both have property '${propName}', but types of ${rec.objectName}.${propName} and ${objectName}.${propName} are different.`
+                    )
+                } else {
+                    properties[propName] = {objectName, type: object.properties[propName].type}
+                }
+            }
+        })
+    }
+}
+
+
+export function propTypeEquals(a: PropType, b: PropType): boolean {
+    if (a.kind != b.kind) return false
+    if (a.kind == 'list') return propTypeEquals(a.item, (b as typeof a).item)
+    return a.name == (b as typeof a).name
+}
