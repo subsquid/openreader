@@ -6,7 +6,7 @@ import type {ClientBase} from "pg"
 import type {Entity, JsonObject, Model, Prop, PropType, Union} from "./model"
 import {getUnionProps} from "./model.tools"
 import {fromJsonCast, fromJsonToTransportCast, fromTransportCast, getScalarResolvers, toTransportCast} from "./scalars"
-import {toColumn, toFkColumn, toQueryListField, toTable} from "./util"
+import {ensureArray, toColumn, toFkColumn, toQueryListField, toTable} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
 
 
@@ -384,12 +384,21 @@ class QueryBuilder {
         switch(propType.kind) {
             case 'scalar':
             case 'enum': {
-                let sqlOp = whereOpToSqlOperator(op)
-                let param = fromTransportCast(propType.name, this.param(arg))
+                let param: string
+                if (op == 'in' || op == 'not_in') {
+                    // We have 2 options here
+                    // 1. use array parameter and do: WHERE col IN (SELECT * FROM unnest($array_param))
+                    // 2. use arg list
+                    // Let's try second option first.
+                    let list = ensureArray(arg).map(a => fromTransportCast(propType.name, this.param(a)))
+                    param = `(${list.join(', ')})`
+                } else {
+                    param = fromTransportCast(propType.name, this.param(arg))
+                }
                 if (isJson) {
                     lhs = fromJsonCast(propType.name, aliasOrPrefix, field)
                 }
-                exps.push(`${lhs} ${sqlOp} ${param}`)
+                exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${param}`)
                 return
             }
             case 'union': {

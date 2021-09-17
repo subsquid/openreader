@@ -150,8 +150,8 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
             // TODO: unify and use enum
             out.line('isTypeOf: String')
             out.line('isTypeOf_not: String')
-            // out.line('isTypeOf_in: [String!]')
-            // out.line('isTypeOf_not_in: [String!]')
+            out.line('isTypeOf_in: [String!]')
+            out.line('isTypeOf_not_in: [String!]')
 
             let props: Record<string, Prop> = {}
             union.variants.forEach(variant => {
@@ -178,8 +178,8 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 out.line(`${fieldName}_gte: ${graphqlType}`)
                 out.line(`${fieldName}_lt: ${graphqlType}`)
                 out.line(`${fieldName}_lte: ${graphqlType}`)
-                // out.line(`${fieldName}_in: [${graphqlType}!]`)
-                // out.line(`${fieldName}_not_in: [${graphqlType}!]`)
+                out.line(`${fieldName}_in: [${graphqlType}!]`)
+                out.line(`${fieldName}_not_in: [${graphqlType}!]`)
                 break
         }
 
@@ -193,8 +193,8 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         }
 
         if (schema.getType(graphqlType) instanceof GraphQLEnumType) {
-            // out.line(`${fieldName}_in: [${graphqlType}!]`)
-            // out.line(`${fieldName}_not_in: [${graphqlType}!]`)
+            out.line(`${fieldName}_in: [${graphqlType}!]`)
+            out.line(`${fieldName}_not_in: [${graphqlType}!]`)
         }
     }
 
