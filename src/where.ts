@@ -31,22 +31,28 @@ const ENDINGS = [
     'some',
     'every',
     'none'
-]
+].sort((a, b) => b.length - a.length).map(e => '_' + e)
 
 
-const OPS_REGEX = new RegExp(`^(.*)_(${ENDINGS.join('|')})$`)
+function parseEnding(field: string): string {
+    for (let i = 0; i < ENDINGS.length; i++) {
+        if (field.endsWith(ENDINGS[i])) return ENDINGS[i].slice(1)
+    }
+    return ''
+}
 
 
 export function parseWhereField(field: string): {op: WhereOp, field: string} {
-    let m = OPS_REGEX.exec(field)
-    if (!m) return {op: 'eq', field}
-    if (m[2] == 'not') return {
+    let ending = parseEnding(field)
+    if (!ending) return {op: 'eq', field}
+    let fieldName = field.slice(0, -(ending.length + 1))
+    if (ending == 'not') return {
         op: 'not_eq',
-        field: m[1]
+        field: fieldName
     }
     return {
-        op: m[2] as WhereOp,
-        field: m[1]
+        op: ending as WhereOp,
+        field: fieldName
     }
 }
 

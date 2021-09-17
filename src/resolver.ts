@@ -3,7 +3,7 @@ import assert from "assert"
 import type {GraphQLResolveInfo, KindEnum} from "graphql"
 import graphqlFields from "graphql-fields"
 import type {ClientBase} from "pg"
-import type {Entity, JsonObject, Model, Prop, PropType, Union} from "./model"
+import type {Entity, JsonObject, Model, PropType, Union} from "./model"
 import {getUnionProps} from "./model.tools"
 import {fromJsonCast, fromJsonToTransportCast, fromTransportCast, getScalarResolvers, toTransportCast} from "./scalars"
 import {ensureArray, toColumn, toFkColumn, toQueryListField, toTable} from "./util"
@@ -346,10 +346,7 @@ class QueryBuilder {
         }
         if (AND) {
             // We are getting objects here, although we have array in schema
-            if (!Array.isArray(AND)) {
-                AND = [AND]
-            }
-            AND.forEach((andWhere: any) => {
+            ensureArray(AND).forEach((andWhere: any) => {
                 if (hasConditions(andWhere)) {
                     exps.push(
                         this.generateWhere(alias, entity, andWhere, join)
@@ -358,12 +355,9 @@ class QueryBuilder {
             })
         }
         if (OR) {
-            // We are getting objects here, although we have array in schema
-            if (!Array.isArray(OR)) {
-                OR = [OR]
-            }
             let ors = [`(${exps.join(' AND ')})`]
-            OR.forEach((orWhere: any) => {
+            // We are getting objects here, although we have array in schema
+            ensureArray(OR).forEach((orWhere: any) => {
                 if (hasConditions(orWhere)) {
                     ors.push(
                         `(${this.generateWhere(alias, entity, orWhere, join)})`
