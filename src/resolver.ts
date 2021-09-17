@@ -5,7 +5,7 @@ import graphqlFields from "graphql-fields"
 import type {ClientBase} from "pg"
 import type {Entity, JsonObject, Model, Prop, PropType, Union} from "./model"
 import {getUnionProps} from "./model.tools"
-import {fromJsonCast, fromStringCast, getScalarResolvers, toStringCast} from "./scalars"
+import {fromJsonCast, fromJsonToTransportCast, fromTransportCast, getScalarResolvers, toTransportCast} from "./scalars"
 import {toColumn, toFkColumn, toQueryListField, toTable} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
 
@@ -225,9 +225,9 @@ class QueryBuilder {
                     case 'scalar':
                     case 'enum':
                         if (object.kind == 'entity') {
-                            columns.push(toStringCast(prop.type.name, col))
+                            columns.push(toTransportCast(prop.type.name, col))
                         } else {
-                            columns.push(col)
+                            columns.push(fromJsonToTransportCast(prop.type.name, prefix, key))
                         }
                         break
                     case 'object':
@@ -241,7 +241,7 @@ class QueryBuilder {
                         )
                         break
                     case 'union':
-                        columns.push(`${col}->'isTypeOf'`)
+                        columns.push(`${col}->>'isTypeOf'`)
                         this.populateColumns(
                             columns,
                             join,
@@ -385,9 +385,9 @@ class QueryBuilder {
             case 'scalar':
             case 'enum': {
                 let sqlOp = whereOpToSqlOperator(op)
-                let param = fromStringCast(propType.name, this.param(arg))
+                let param = fromTransportCast(propType.name, this.param(arg))
                 if (isJson) {
-                    lhs = fromJsonCast(propType.name, lhs)
+                    lhs = fromJsonCast(propType.name, aliasOrPrefix, field)
                 }
                 exps.push(`${lhs} ${sqlOp} ${param}`)
                 return

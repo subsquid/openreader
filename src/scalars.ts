@@ -70,7 +70,7 @@ export function getScalarResolvers(): IResolvers {
 }
 
 
-export function toStringCast(scalarType: string, sqlExp: string): string {
+export function toTransportCast(scalarType: string, sqlExp: string): string {
     let s = scalars[scalarType]
     if (s) {
         return s.toStringCast(sqlExp)
@@ -80,7 +80,7 @@ export function toStringCast(scalarType: string, sqlExp: string): string {
 }
 
 
-export function fromStringCast(scalarType: string, sqlExp: string): string {
+export function fromTransportCast(scalarType: string, sqlExp: string): string {
     let s = scalars[scalarType]
     if (s) {
         return s.fromStringCast(sqlExp)
@@ -90,15 +90,23 @@ export function fromStringCast(scalarType: string, sqlExp: string): string {
 }
 
 
-export function fromJsonCast(scalarType: string, sqlExp: string): string {
+export function fromJsonCast(scalarType: string, objSqlExp: string, prop: string): string {
     switch(scalarType) {
-        case 'ID':
-        case 'String':
-            return `(${sqlExp})::text`
         case 'Int':
         case 'Float':
-            return `(${sqlExp})::numeric`
+            return `(${objSqlExp}->'${prop}')::numeric`
         default:
-            return fromStringCast(scalarType, sqlExp)
+            return fromTransportCast(scalarType, `${objSqlExp}->>'${prop}'`)
+    }
+}
+
+
+export function fromJsonToTransportCast(scalarType: string, objSqlExp: string, prop: string) {
+    switch(scalarType) {
+        case 'Int':
+        case 'Float':
+            return `(${objSqlExp}->'${prop}')::numeric`
+        default:
+            return `${objSqlExp}->>'${prop}'`
     }
 }
