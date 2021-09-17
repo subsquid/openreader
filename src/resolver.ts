@@ -384,21 +384,48 @@ class QueryBuilder {
         switch(propType.kind) {
             case 'scalar':
             case 'enum': {
-                let param: string
-                if (op == 'in' || op == 'not_in') {
-                    // We have 2 options here
-                    // 1. use array parameter and do: WHERE col IN (SELECT * FROM unnest($array_param))
-                    // 2. use arg list
-                    // Let's try second option first.
-                    let list = ensureArray(arg).map(a => fromTransportCast(propType.name, this.param(a)))
-                    param = `(${list.join(', ')})`
-                } else {
-                    param = fromTransportCast(propType.name, this.param(arg))
-                }
                 if (isJson) {
                     lhs = fromJsonCast(propType.name, aliasOrPrefix, field)
                 }
-                exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${param}`)
+                switch(op) {
+                    case 'in':
+                    case 'not_in': {
+                        // We have 2 options here
+                        // 1. use array parameter and do: WHERE col IN (SELECT * FROM unnest($array_param))
+                        // 2. use arg list
+                        // Let's try second option first.
+                        let list = ensureArray(arg).map(a => fromTransportCast(propType.name, this.param(a)))
+                        let param = `(${list.join(', ')})`
+                        exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${param}`)
+                        break
+                    }
+                    case 'starts_with':
+                        exps.push(`starts_with(${lhs}, ${this.param(arg)})`)
+                        break
+                    case 'not_starts_with':
+                        exps.push(`NOT starts_with(${lhs}, ${this.param(arg)})`)
+                        break
+                    case 'ends_with': {
+                        let param = this.param(arg)
+                        exps.push(`right(${lhs}, length(${param})) = ${param}`)
+                        break
+                    }
+                    case 'not_ends_with': {
+                        let param = this.param(arg)
+                        exps.push(`right(${lhs}, length(${param})) != ${param}`)
+                        break
+                    }
+                    case 'contains':
+                        exps.push(`position(${this.param(arg)} in ${lhs}) > 0`)
+                        break
+                    case 'not_contains':
+                        exps.push(`position(${this.param(arg)} in ${lhs}) = 0`)
+                        break
+                    default: {
+                        let param = fromTransportCast(propType.name, this.param(arg))
+                        exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${param}`)
+                    }
+                }
                 return
             }
             case 'union': {

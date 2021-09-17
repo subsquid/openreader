@@ -184,12 +184,12 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         }
 
         if (graphqlType == 'String' || graphqlType == 'ID') {
-            // out.line(`${fieldName}_contains: ${graphqlType}`)
-            // out.line(`${fieldName}_not_contains: ${graphqlType}`)
-            // out.line(`${fieldName}_starts_with: ${graphqlType}`)
-            // out.line(`${fieldName}_not_starts_with: ${graphqlType}`)
-            // out.line(`${fieldName}_ends_with: ${graphqlType}`)
-            // out.line(`${fieldName}_not_ends_with: ${graphqlType}`)
+            out.line(`${fieldName}_contains: ${graphqlType}`)
+            out.line(`${fieldName}_not_contains: ${graphqlType}`)
+            out.line(`${fieldName}_starts_with: ${graphqlType}`)
+            out.line(`${fieldName}_not_starts_with: ${graphqlType}`)
+            out.line(`${fieldName}_ends_with: ${graphqlType}`)
+            out.line(`${fieldName}_not_ends_with: ${graphqlType}`)
         }
 
         if (schema.getType(graphqlType) instanceof GraphQLEnumType) {
