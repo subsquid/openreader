@@ -13,7 +13,6 @@
 
 import {IResolvers} from "@graphql-tools/utils"
 import {GraphQLScalarType} from "graphql"
-import BN from "bn.js"
 
 
 export interface Scalar {
@@ -32,16 +31,22 @@ export const scalars: Record<string, Scalar> = {
                 return ''+value
             },
             parseValue(value: string) {
-                // TODO: checks are simple, no need for BN here
-                new BN(value)
+                if (!isBigInt(value)) throw new Error('Not a BigInt: ' + value)
                 return value
             },
             parseLiteral(ast) {
                 switch(ast.kind) {
                     case "StringValue":
+                        if (isBigInt(ast.value)) {
+                            if (ast.value[0] == '+') {
+                                return ast.value.slice(1)
+                            } else {
+                                return ast.value
+                            }
+                        } else {
+                            throw new Error('Not a BigInt: ' + ast.value)
+                        }
                     case "IntValue":
-                        // TODO: checks are simple, no need for BN here
-                        new BN(ast.value)
                         return ''+ast.value
                     default:
                         return null
@@ -55,6 +60,11 @@ export const scalars: Record<string, Scalar> = {
             return `(${exp})::text`
         }
     }
+}
+
+
+function isBigInt(s: string): boolean {
+    return /^[+\-]?\d+$/.test(s)
 }
 
 
