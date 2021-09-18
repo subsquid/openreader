@@ -5,6 +5,7 @@ import graphqlFields from "graphql-fields"
 import type {ClientBase} from "pg"
 import type {Entity, JsonObject, Model, PropType, Union} from "./model"
 import {getUnionProps} from "./model.tools"
+import {OrderBy, parseOrderBy} from "./orderBy"
 import {fromJsonCast, fromJsonToTransportCast, fromTransportCast, getScalarResolvers, toTransportCast} from "./scalars"
 import {ensureArray, toColumn, toFkColumn, toQueryListField, toTable} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
@@ -187,6 +188,14 @@ class QueryBuilder {
             out += '\nWHERE ' + whereExp
         }
 
+        let orderByInput = args.orderBy && ensureArray(args.orderBy)
+        if (orderByInput?.length) {
+            let orderBy = parseOrderBy(this.model, entityName, orderByInput)
+            let exps: string[] = []
+            this.populateOrderBy(exps, join, alias, '', entity, orderBy)
+            out += '\nORDER BY ' + exps.join(', ')
+        }
+
         if (args.limit) {
             out += '\nLIMIT ' + this.param(args.limit)
         }
@@ -200,6 +209,76 @@ class QueryBuilder {
         }
 
         return out
+    }
+
+    private populateOrderBy(
+        exps: string[],
+        join: FkJoinSet,
+        alias: string,
+        prefix: string,
+        object: Entity | JsonObject,
+        orderBy: OrderBy
+    ) {
+        for (let key in orderBy) {
+            let spec = orderBy[key]
+            if (object.properties[key]) {
+                let col = object.kind == 'entity'
+                    ? this.ident(alias) + '.' + this.ident(toColumn(key))
+                    : `${prefix}->'${key}'`
+
+                let propType = object.properties[key].type
+                switch(propType.kind) {
+                    case 'scalar':
+                    case 'enum':
+                        assert(typeof spec == 'string')
+                        if (object.kind == 'entity') {
+                            exps.push(`${col} ${spec}`)
+                        } else {
+                            exps.push(`${fromJsonCast(propType.name, prefix, key)} ${spec}`)
+                        }
+                        break
+                    case 'object':
+                        assert(typeof spec == 'object')
+                        this.populateOrderBy(
+                            exps,
+                            join,
+                            alias,
+                            col,
+                            this.object(propType.name),
+                            spec
+                        )
+                        break
+                    case 'union':
+                        assert(typeof spec == 'object')
+                        this.populateOrderBy(
+                            exps,
+                            join,
+                            alias,
+                            col,
+                            this.getUnionObject(propType.name),
+                            spec
+                        )
+                        break
+                }
+            } else {
+                assert(object.kind == 'entity')
+                assert(typeof spec == 'object')
+                let rel = object.relations[key]
+                assert(rel.type == 'FK')
+                this.populateOrderBy(
+                    exps,
+                    join,
+                    join.add(
+                        toTable(rel.foreignEntity),
+                        alias,
+                        toFkColumn(key)
+                    ),
+                    '',
+                    this.entity(rel.foreignEntity),
+                    spec
+                )
+            }
+        }
     }
 
     private populateColumns(

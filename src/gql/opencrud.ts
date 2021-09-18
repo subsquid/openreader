@@ -2,20 +2,23 @@ import {gql} from "apollo-server"
 import assert from "assert"
 import {DocumentNode, GraphQLEnumType, GraphQLSchema} from "graphql"
 import {Entity, Enum, JsonObject, Prop, PropType, Relation, Union} from "../model"
+import {getOrderByMapping} from "../orderBy"
 import {scalars_list} from "../scalars"
 import {lowerCaseFirst, Output, pluralize} from "../util"
-import {getModel, propTypeEquals} from "./schema"
+import {getModel} from "./schema"
 
 
 export function generateOpenCrudQueries(schema: GraphQLSchema): string {
     let out = new Output()
     let model = getModel(schema)
 
+    generatePageInfoType()
+
     for (let name in model) {
         let item = model[name]
         switch(item.kind) {
             case 'entity':
-                // generateOrderByInput(name, model[name])
+                generateOrderByInput(name)
                 generateWhereInput(name, item)
                 generateObjectType(name, item)
                 break
@@ -75,14 +78,14 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
     }
 
     function manyArguments(relatedEntityName: string): string {
-        return `(where: ${relatedEntityName}WhereInput offset: Int limit: Int)`
+        return `(where: ${relatedEntityName}WhereInput orderBy: [${relatedEntityName}OrderByInput] offset: Int limit: Int)`
     }
 
-    function generateOrderByInput(name: string, entity: Entity): void {
-        out.block(`enum ${name}OrderByInput`, () => {
-            for (let col in entity.properties) {
-                out.line(`${col}_ASC`)
-                out.line(`${col}_DESC`)
+    function generateOrderByInput(entityName: string): void {
+        out.block(`enum ${entityName}OrderByInput`, () => {
+            let mapping = getOrderByMapping(model, entityName)
+            for (let key of mapping.keys()) {
+                out.line(key)
             }
         })
         out.line()
@@ -222,6 +225,16 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 out.line(key)
             }
         })
+    }
+
+    function generatePageInfoType() {
+        out.block(`type PageInfo`, () => {
+            out.line('hasNextPage: Boolean!')
+            out.line('hasPreviousPage: Boolean!')
+            out.line('startCursor: String!')
+            out.line('endCursor: String!')
+        })
+        out.line()
     }
 
     return out.toString()
