@@ -1,6 +1,4 @@
 import {UserInputError} from "apollo-server"
-import assert from "assert"
-import type {OpenCrudOrderByValue} from "./orderBy"
 
 
 export interface PageInfo {
@@ -11,31 +9,34 @@ export interface PageInfo {
 }
 
 
-export interface Cursor {
-    orderBy: OpenCrudOrderByValue[]
-    offset: number
+export interface ConnectionEdge<T> {
+    node?: T
+    cursor?: string
 }
 
 
+export interface ConnectionResponse<T> {
+    edges?: ConnectionEdge<T>[]
+    pageInfo?: PageInfo
+}
+
+
+/**
+ * Offset value for SQL query
+ */
+export type Cursor = number
+
+
 export function encodeCursor(cursor: Cursor): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf-8').toString('base64')
+    return ''+cursor
 }
 
 
 export function decodeCursor(value: string): Cursor {
-    let cursor: any
-    try {
-        let json = Buffer.from(value, 'base64').toString('utf-8')
-        cursor = JSON.parse(json)
-        assert(typeof cursor == 'object')
-        assert(Array.isArray(cursor.orderBy))
-        assert(cursor.orderBy.length > 0)
-        assert(cursor.orderBy.every((item: any) => typeof item == 'string'))
-        assert(typeof cursor.offset == 'number')
-        assert(cursor.offset > 0)
-        assert(isFinite(cursor.offset))
-        return {orderBy: cursor.orderBy, offset: cursor.offset}
-    } catch(e: any) {
+    let cursor = parseInt(value)
+    if (isFinite(cursor) && cursor >= 0) {
+        return cursor
+    } else {
         throw new InvalidCursorValue(value)
     }
 }
@@ -45,4 +46,35 @@ export class InvalidCursorValue extends UserInputError {
     constructor(value: string) {
         super(`invalid cursor value: ${value}`)
     }
+}
+
+
+export interface ConnectionArgs {
+    first?: number
+    after?: string
+}
+
+
+export interface ConnectionParams {
+    offset: number
+    limit: number
+}
+
+
+/**
+ * https://relay.dev/assets/files/connections-932f4f2cdffd79724ac76373deb30dc8.htm#sec-Pagination-algorithm
+ */
+export function decodeConnectionArgs(args: ConnectionArgs): ConnectionParams {
+    let offset = 0
+    let limit = 100
+    if (args.after) {
+        offset = decodeCursor(args.after)
+    }
+    if (args.first != null) {
+        if (args.first < 0) {
+            throw new UserInputError("'first' argument of connection can't be less than 0")
+        }
+        limit = args.first
+    }
+    return {offset, limit}
 }

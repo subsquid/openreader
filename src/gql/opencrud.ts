@@ -21,6 +21,7 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 generateOrderByInput(name)
                 generateWhereInput(name, item)
                 generateObjectType(name, item)
+                generateEntityConnection(name)
                 break
             case 'object':
                 if (hasFilters(item)) {
@@ -42,6 +43,7 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         for (let name in model) {
             if (model[name].kind == 'entity') {
                 out.line(`${lowerCaseFirst(pluralize(name))}${manyArguments(name)}: [${name}!]!`)
+                out.line(`${lowerCaseFirst(pluralize(name))}Connection${connectionArguments(name)}: ${name}Connection!`)
             }
         }
     })
@@ -77,8 +79,12 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         }
     }
 
-    function manyArguments(relatedEntityName: string): string {
-        return `(where: ${relatedEntityName}WhereInput orderBy: [${relatedEntityName}OrderByInput] offset: Int limit: Int)`
+    function manyArguments(entityName: string): string {
+        return `(where: ${entityName}WhereInput orderBy: [${entityName}OrderByInput] offset: Int limit: Int)`
+    }
+
+    function connectionArguments(entityName: string): string {
+        return `(orderBy: [${entityName}OrderByInput!]! after: String first: Int where: ${entityName}WhereInput)`
     }
 
     function generateOrderByInput(entityName: string): void {
@@ -227,12 +233,26 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         })
     }
 
-    function generatePageInfoType() {
+    function generatePageInfoType(): void {
         out.block(`type PageInfo`, () => {
             out.line('hasNextPage: Boolean!')
             out.line('hasPreviousPage: Boolean!')
             out.line('startCursor: String!')
             out.line('endCursor: String!')
+        })
+        out.line()
+    }
+
+    function generateEntityConnection(name: string): void {
+        out.block(`type ${name}Edge`, () => {
+            out.line(`node: ${name}!`)
+            out.line(`cursor: String!`)
+        })
+        out.line()
+        out.block(`type ${name}Connection`, () => {
+            out.line(`edges: [${name}Edge!]!`)
+            out.line(`pageInfo: PageInfo!`)
+            out.line(`totalCount: Int!`)
         })
         out.line()
     }

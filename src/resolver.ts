@@ -1,11 +1,20 @@
 import type {IFieldResolver, IResolvers} from "@graphql-tools/utils"
+import {UserInputError} from "apollo-server"
 import assert from "assert"
 import type {GraphQLResolveInfo, KindEnum} from "graphql"
 import graphqlFields from "graphql-fields"
-import type {ClientBase} from "pg"
+import type {ClientBase, QueryArrayResult} from "pg"
 import type {Entity, JsonObject, Model, PropType, Union} from "./model"
 import {getUnionProps} from "./model.tools"
-import {OrderBy, parseOrderBy} from "./orderBy"
+import {OpenCrudOrderByValue, OrderBy, parseOrderBy} from "./orderBy"
+import {
+    ConnectionArgs as RelayConnectionArgs,
+    ConnectionEdge,
+    ConnectionResponse as RelayConnectionResponse,
+    decodeConnectionArgs,
+    encodeCursor,
+    PageInfo
+} from "./relayConnection"
 import {fromJsonCast, fromJsonToTransportCast, fromTransportCast, getScalarResolvers, toTransportCast} from "./scalars"
 import {ensureArray, toColumn, toFkColumn, toQueryListField, toTable} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
@@ -24,7 +33,10 @@ export function buildResolvers(model: Model): IResolvers {
         switch(model[name].kind) {
             case 'entity':
                 Query[toQueryListField(name)] = (source, args, context, info) => {
-                    return resolveEntityList(name, args, context, info)
+                    return new QueryBuilder(context).executeSelect(name, args, requestedFields(info))
+                }
+                Query[toQueryListField(name) + 'Connection'] = (source, args, context, info) => {
+                    return resolveEntityConnection(name, args, context, info)
                 }
                 break
             case 'union':
@@ -43,21 +55,87 @@ function resolveUnionType(obj: any): string {
 }
 
 
-export interface ListArgs {
+interface ListArgs {
     offset?: number
     limit?: number
+    orderBy?: OpenCrudOrderByValue[]
+    where?: any
+}
+
+
+interface ConnectionArgs extends RelayConnectionArgs {
     orderBy?: string[]
     where?: any
 }
 
 
-async function resolveEntityList(entityName: string, args: ListArgs, context: ResolverContext, info: GraphQLResolveInfo): Promise<any[]> {
+interface ConnectionResponse extends RelayConnectionResponse<any> {
+    totalCount?: number
+}
+
+
+async function resolveEntityConnection(entityName: string, args: ConnectionArgs, context: ResolverContext, info: GraphQLResolveInfo): Promise<ConnectionResponse> {
+    let response: ConnectionResponse = {}
+
+    let orderBy = args.orderBy && ensureArray(args.orderBy)
+    if (!orderBy?.length) {
+        throw new UserInputError("orderBy argument is required for connection")
+    }
+
+    let {offset, limit} = decodeConnectionArgs(args)
+    let listArgs = {
+        where: args.where,
+        orderBy,
+        offset,
+        limit: limit + 1
+    }
+
+    // https://relay.dev/assets/files/connections-932f4f2cdffd79724ac76373deb30dc8.htm#sec-undefined.PageInfo.Fields
+    function pageInfo(listLength: number): PageInfo {
+        return {
+            hasNextPage: listLength > limit,
+            hasPreviousPage: listLength > 0 && offset > 0,
+            startCursor: listLength > 0 ? encodeCursor(offset + 1) : '',
+            endCursor: listLength > 0 ? encodeCursor(offset + Math.min(limit, listLength)) : ''
+        }
+    }
+
     let fields = requestedFields(info)
-    let query = new QueryBuilder(context)
-    let sql = query.select(entityName, args, fields)
-    console.log('\n' + sql)
-    let result = await context.db.query({text: sql, rowMode: 'array'}, query.params)
-    return query.toResult(result.rows, entityName, fields)
+    if (fields.edges?.node) {
+        let nodes = await new QueryBuilder(context).executeSelect(entityName, listArgs, fields.edges.node)
+        let edges: ConnectionEdge<any>[] = new Array(Math.min(limit, nodes.length))
+        for (let i = 0; i < edges.length; i++) {
+            edges[i] = {
+                node: nodes[i],
+                cursor: encodeCursor(offset + i + 1)
+            }
+        }
+        response.edges = edges
+        response.pageInfo = pageInfo(nodes.length)
+        if (nodes.length > 0 && nodes.length <= limit) {
+            response.totalCount = offset + nodes.length
+        }
+    } else if (fields.edges?.cursor || fields.pageInfo) {
+        let listLength = await new QueryBuilder(context).executeListCount(entityName, listArgs)
+        response.pageInfo = pageInfo(listLength)
+        if (fields.edges?.cursor) {
+            response.edges = []
+            for (let i = 0; i < listLength - 1; i++) {
+                response.edges.push({
+                    cursor: encodeCursor(offset + i)
+                })
+            }
+        }
+        if (listLength > 0 && listLength <= limit) {
+            response.totalCount = offset + listLength
+        }
+    }
+
+    if (fields.totalCount && response.totalCount == null) {
+        response.totalCount = await new QueryBuilder(context).executeSelectCount(entityName, listArgs.where)
+    }
+
+    return response
 }
 
 
@@ -605,6 +683,29 @@ class QueryBuilder {
             }
         }
         return {rec, idx}
+    }
+
+    async executeSelect(entityName: string, args: ListArgs, fields: RequestedFields): Promise<any[]> {
+        let sql = this.select(entityName, args, fields)
+        let result = await this.query(sql)
+        return this.toResult(result.rows, entityName, fields)
+    }
+
+    async executeSelectCount(entityName: string, where?: any): Promise<number> {
+        let sql = `SELECT count(*) ${this.select(entityName, {where})}`
+        let result = await this.query(sql)
+        return result.rows[0][0]
+    }
+
+    async executeListCount(entityName: string, args: ListArgs): Promise<number> {
+        let sql = `SELECT count(*) FROM (SELECT true ${this.select(entityName, args)}) AS ${this.aliases.add('list')}`
+        let result = await this.query(sql)
+        return result.rows[0][0]
+    }
+
+    private query(sql: string): Promise<QueryArrayResult> {
+        console.log('\n'+sql)
+        return this.db.query({text: sql, rowMode: 'array'}, this.params)
     }
 }
 
