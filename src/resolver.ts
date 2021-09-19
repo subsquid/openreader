@@ -120,9 +120,9 @@ async function resolveEntityConnection(entityName: string, args: ConnectionArgs,
         response.pageInfo = pageInfo(listLength)
         if (fields.edges?.cursor) {
             response.edges = []
-            for (let i = 0; i < listLength - 1; i++) {
+            for (let i = 0; i < Math.min(limit, listLength); i++) {
                 response.edges.push({
-                    cursor: encodeCursor(offset + i)
+                    cursor: encodeCursor(offset + i + 1)
                 })
             }
         }
