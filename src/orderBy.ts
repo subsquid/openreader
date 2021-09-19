@@ -59,16 +59,11 @@ function buildOrderByMapping(model: Model, typeName: string, depth: number): Ope
                     m.set(key + '_' + name, {[key]: spec})
                 }
                 break
-        }
-    }
-    if (object.kind == 'entity') {
-        for (let key in object.relations) {
-            let rel = object.relations[key]
-            if (rel.type == 'FK') {
-                for (let [name, spec] of buildOrderByMapping(model, rel.foreignEntity, depth - 1)) {
+            case 'fk':
+                for (let [name, spec] of buildOrderByMapping(model, propType.foreignEntity, depth - 1)) {
                     m.set(key + '_' + name, {[key]: spec})
                 }
-            }
+                break
         }
     }
     return m

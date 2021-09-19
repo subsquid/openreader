@@ -1,7 +1,7 @@
 import {gql} from "apollo-server"
 import assert from "assert"
 import {DocumentNode, GraphQLEnumType, GraphQLSchema} from "graphql"
-import {Entity, Enum, JsonObject, Prop, PropType, Relation, Union} from "../model"
+import {Entity, Enum, JsonObject, Prop, Union} from "../model"
 import {getOrderByMapping} from "../orderBy"
 import {scalars_list} from "../scalars"
 import {lowerCaseFirst, Output, pluralize} from "../util"
@@ -52,30 +52,27 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         out.block(`type ${name}`, () => {
             for (let key in object.properties) {
                 let prop = object.properties[key]
-                out.line(`${key}: ${renderPropType(prop.type, prop.nullable)}`)
-            }
-            if (object.kind == 'object') return
-            for (let key in object.relations) {
-                let rel = object.relations[key]
-                switch(rel.type) {
-                    case 'FK':
-                        out.line(`${key}: ${rel.foreignEntity}${rel.nullable ? '' : '!'}`)
-                        break
-                    case 'LIST':
-                        out.line(`${key}${manyArguments(rel.entity)}: [${rel.entity}!]!`)
-                        break
+                let gqlType = renderPropType(prop)
+                if (prop.type.kind == 'list-relation') {
+                    out.line(`${lowerCaseFirst(pluralize(prop.type.entity))}${manyArguments(prop.type.entity)}: ${gqlType}`)
+                } else {
+                    out.line(`${key}: ${gqlType}`)
                 }
             }
         })
         out.line()
     }
 
-    function renderPropType(propType: PropType, nullable: boolean): string {
-        switch(propType.kind) {
+    function renderPropType(prop: Prop): string {
+        switch(prop.type.kind) {
             case "list":
-                return `[${renderPropType(propType.item, propType.nullableItem)}]${nullable ? '' : '!'}`
+                return `[${renderPropType(prop.type.item)}]${prop.nullable ? '' : '!'}`
+            case 'fk':
+                return `${prop.type.foreignEntity}${prop.nullable ? '' : '!'}`
+            case "list-relation":
+                return `[${prop.type.entity}!]!`
             default:
-                return propType.name + (nullable ? '' : '!')
+                return prop.type.name + (prop.nullable ? '' : '!')
         }
     }
 
@@ -101,9 +98,6 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         out.block(`input ${name}WhereInput`, () => {
             generatePropsFilters(object.properties)
             if (object.kind == 'entity') {
-                for (let key in object.relations) {
-                    generateRelationFilters(key, object.relations[key])
-                }
                 out.line(`AND: [${name}WhereInput!]`)
                 out.line(`OR: [${name}WhereInput!]`)
             }
@@ -126,6 +120,14 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                     break
                 case 'union':
                     out.line(`${key}: ${prop.type.name}WhereInput`)
+                    break
+                case 'fk':
+                    out.line(`${key}: ${prop.type.foreignEntity}WhereInput`)
+                    break
+                case 'list-relation':
+                    out.line(`${key}_every: ${prop.type.entity}WhereInput`)
+                    out.line(`${key}_some: ${prop.type.entity}WhereInput`)
+                    out.line(`${key}_none: ${prop.type.entity}WhereInput`)
                     break
             }
         }
@@ -204,19 +206,6 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         if (schema.getType(graphqlType) instanceof GraphQLEnumType) {
             out.line(`${fieldName}_in: [${graphqlType}!]`)
             out.line(`${fieldName}_not_in: [${graphqlType}!]`)
-        }
-    }
-
-    function generateRelationFilters(fieldName: string, rel: Relation): void {
-        switch(rel.type) {
-            case 'FK':
-                out.line(`${fieldName}: ${rel.foreignEntity}WhereInput`)
-                break
-            case 'LIST':
-                out.line(`${fieldName}_every: ${rel.entity}WhereInput`)
-                out.line(`${fieldName}_some: ${rel.entity}WhereInput`)
-                out.line(`${fieldName}_none: ${rel.entity}WhereInput`)
-                break
         }
     }
 

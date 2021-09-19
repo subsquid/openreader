@@ -16,7 +16,7 @@ import {
     GraphQLUnionType
 } from "graphql"
 import {DirectiveNode} from "graphql/language/ast"
-import {Model, Prop, PropType, Relations} from "../model"
+import {Model, Prop, PropType} from "../model"
 import {scalars_list} from "../scalars"
 import {weakMemo} from "../util"
 
@@ -62,8 +62,8 @@ function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
     if (model[type.name]) return
     let kind: 'entity' | 'object' = isEntityType(type) ? 'entity' : 'object'
     let properties: Record<string, Prop> = {}
-    let relations: Relations = {}
     let fields = type.getFields()
+
     if (kind == 'entity') {
         if (fields.id == null) {
             properties.id = {
@@ -79,6 +79,7 @@ function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
             }
         }
     }
+
     for (let key in fields) {
         let f: GraphQLField<any, any> = fields[key]
         let fieldType = f.type
@@ -117,12 +118,13 @@ function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
             }
         } else if (fieldType instanceof GraphQLObjectType) {
             if (isEntityType(fieldType)) {
-                if (kind != 'entity') throw unsupportedFieldError(type.name, key)
                 switch(list.nulls.length) {
                     case 0:
-                        relations[key] = {
-                            type: 'FK',
-                            foreignEntity: fieldType.name,
+                        properties[key] = {
+                            type: {
+                                kind: 'fk',
+                                foreignEntity: fieldType.name
+                            },
                             nullable
                         }
                         break
@@ -134,10 +136,13 @@ function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
                         let derivedFromValueNode = derivedFrom.arguments?.[0].value
                         assert(derivedFromValueNode != null)
                         assert(derivedFromValueNode.kind == 'StringValue')
-                        relations[key] = {
-                            type: 'LIST',
-                            entity: fieldType.name,
-                            field: derivedFromValueNode.value
+                        properties[key] = {
+                            type: {
+                                kind: 'list-relation',
+                                entity: fieldType.name,
+                                field: derivedFromValueNode.value
+                            },
+                            nullable: false
                         }
                         break
                     default:
@@ -157,17 +162,9 @@ function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
             throw unsupportedFieldError(type.name, key)
         }
     }
-    if (kind == 'entity') {
-        model[type.name] = {
-            kind,
-            properties,
-            relations
-        }
-    } else {
-        model[type.name] = {
-            kind,
-            properties
-        }
+    model[type.name] = {
+        kind,
+        properties
     }
 }
 
@@ -227,8 +224,10 @@ function wrapWithList(nulls: boolean[], dataType: PropType): PropType {
     if (nulls.length == 0) return dataType
     return {
         kind: 'list',
-        item: wrapWithList(nulls.slice(1), dataType),
-        nullableItem: nulls[0]
+        item: {
+            type: wrapWithList(nulls.slice(1), dataType),
+            nullable: nulls[0]
+        }
     }
 }
 
@@ -263,6 +262,13 @@ function validateUnionTypes(model: Model): void {
 
 export function propTypeEquals(a: PropType, b: PropType): boolean {
     if (a.kind != b.kind) return false
-    if (a.kind == 'list') return propTypeEquals(a.item, (b as typeof a).item)
-    return a.name == (b as typeof a).name
+    if (a.kind == 'list') return propTypeEquals(a.item.type, (b as typeof a).item.type)
+    switch(a.kind) {
+        case 'fk':
+            return a.foreignEntity == (b as typeof a).foreignEntity
+        case 'list-relation':
+            return a.entity == (b as typeof a).entity && a.field == (b as typeof a).field
+        default:
+            return a.name == (b as typeof a).name
+    }
 }

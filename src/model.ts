@@ -7,7 +7,6 @@ export type Model = Record<Name, Entity | JsonObject | Union | Enum>
 export interface Entity {
     kind: 'entity'
     properties: Record<Name, Prop>
-    relations: Relations
 }
 
 
@@ -35,7 +34,14 @@ export interface Prop {
 }
 
 
-export type PropType = ScalarPropType | EnumPropType | ListPropType | ObjectPropType | UnionPropType
+export type PropType =
+    ScalarPropType |
+    EnumPropType |
+    ListPropType |
+    ObjectPropType |
+    UnionPropType |
+    FkPropType |
+    ListRelPropType
 
 
 export interface ScalarPropType {
@@ -64,26 +70,18 @@ export interface UnionPropType {
 
 export interface ListPropType {
     kind: 'list'
-    item: PropType
-    nullableItem: boolean
+    item: Prop
 }
 
 
-export type Relations = Record<Name, Relation>
-
-
-export type Relation = FK_Relation | LIST_Relation
-
-
-export interface FK_Relation {
-    type: 'FK'
+export interface FkPropType {
+    kind: 'fk'
     foreignEntity: Name
-    nullable: boolean
 }
 
 
-export interface LIST_Relation {
-    type: 'LIST'
+export interface ListRelPropType {
+    kind: 'list-relation'
     entity: Name
     field: Name
 }

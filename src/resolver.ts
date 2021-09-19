@@ -299,62 +299,64 @@ class QueryBuilder {
     ) {
         for (let key in orderBy) {
             let spec = orderBy[key]
-            if (object.properties[key]) {
-                let col = object.kind == 'entity'
-                    ? this.ident(alias) + '.' + this.ident(toColumn(key))
-                    : `${prefix}->'${key}'`
+            let propType = object.properties[key].type
 
-                let propType = object.properties[key].type
-                switch(propType.kind) {
-                    case 'scalar':
-                    case 'enum':
-                        assert(typeof spec == 'string')
-                        if (object.kind == 'entity') {
-                            exps.push(`${col} ${spec}`)
-                        } else {
-                            exps.push(`${fromJsonCast(propType.name, prefix, key)} ${spec}`)
-                        }
-                        break
-                    case 'object':
-                        assert(typeof spec == 'object')
-                        this.populateOrderBy(
-                            exps,
-                            join,
-                            alias,
-                            col,
-                            this.object(propType.name),
-                            spec
-                        )
-                        break
-                    case 'union':
-                        assert(typeof spec == 'object')
-                        this.populateOrderBy(
-                            exps,
-                            join,
-                            alias,
-                            col,
-                            this.getUnionObject(propType.name),
-                            spec
-                        )
-                        break
-                }
-            } else {
-                assert(object.kind == 'entity')
-                assert(typeof spec == 'object')
-                let rel = object.relations[key]
-                assert(rel.type == 'FK')
-                this.populateOrderBy(
-                    exps,
-                    join,
-                    join.add(
-                        toTable(rel.foreignEntity),
+            let col = object.kind == 'entity'
+                ? this.ident(alias) + '.' + this.ident(toColumn(key))
+                : `${prefix}->'${key}'`
+
+            switch(propType.kind) {
+                case 'scalar':
+                case 'enum':
+                    assert(typeof spec == 'string')
+                    if (object.kind == 'entity') {
+                        exps.push(`${col} ${spec}`)
+                    } else {
+                        exps.push(`${fromJsonCast(propType.name, prefix, key)} ${spec}`)
+                    }
+                    break
+                case 'object':
+                    assert(typeof spec == 'object')
+                    this.populateOrderBy(
+                        exps,
+                        join,
                         alias,
-                        toFkColumn(key)
-                    ),
-                    '',
-                    this.entity(rel.foreignEntity),
-                    spec
-                )
+                        col,
+                        this.object(propType.name),
+                        spec
+                    )
+                    break
+                case 'union':
+                    assert(typeof spec == 'object')
+                    this.populateOrderBy(
+                        exps,
+                        join,
+                        alias,
+                        col,
+                        this.getUnionObject(propType.name),
+                        spec
+                    )
+                    break
+                case 'fk':
+                    assert(typeof spec == 'object')
+                    let on: string
+                    if (object.kind == 'entity') {
+                        on = this.ident(alias) + '.' + this.ident(toFkColumn(key))
+                    } else {
+                        on = fromJsonCast('ID', prefix, key)
+                    }
+                    this.populateOrderBy(
+                        exps,
+                        join,
+                        join.add(
+                            toTable(propType.foreignEntity),
+                            on
+                        ),
+                        '',
+                        this.entity(propType.foreignEntity),
+                        spec
+                    )
+                    break
             }
         }
     }
@@ -371,67 +373,67 @@ class QueryBuilder {
             if (key == '__arguments') {
                 continue
             }
-            if (object.properties[key]) {
-                let prop = object.properties[key]
 
-                let col = object.kind == 'entity'
-                    ? this.ident(alias) + '.' + this.ident(toColumn(key))
-                    : `${prefix}->'${key}'`
+            let prop = object.properties[key]
 
-                switch(prop.type.kind) {
-                    case 'scalar':
-                    case 'enum':
-                        if (object.kind == 'entity') {
-                            columns.push(toTransportCast(prop.type.name, col))
-                        } else {
-                            columns.push(fromJsonToTransportCast(prop.type.name, prefix, key))
-                        }
-                        break
-                    case 'object':
-                        this.populateColumns(
-                            columns,
-                            join,
-                            fields[key],
-                            alias,
-                            col,
-                            this.object(prop.type.name)
-                        )
-                        break
-                    case 'union':
-                        columns.push(`${col}->>'isTypeOf'`)
-                        this.populateColumns(
-                            columns,
-                            join,
-                            fields[key],
-                            alias,
-                            col,
-                            this.getUnionObject(prop.type.name)
-                        )
-                        break
+            let col = object.kind == 'entity'
+                ? this.ident(alias) + '.' + this.ident(toColumn(key))
+                : `${prefix}->'${key}'`
+
+            switch(prop.type.kind) {
+                case 'scalar':
+                case 'enum':
+                    if (object.kind == 'entity') {
+                        columns.push(toTransportCast(prop.type.name, col))
+                    } else {
+                        columns.push(fromJsonToTransportCast(prop.type.name, prefix, key))
+                    }
+                    break
+                case 'object':
+                    this.populateColumns(
+                        columns,
+                        join,
+                        fields[key],
+                        alias,
+                        col,
+                        this.object(prop.type.name)
+                    )
+                    break
+                case 'union':
+                    columns.push(`${col}->>'isTypeOf'`)
+                    this.populateColumns(
+                        columns,
+                        join,
+                        fields[key],
+                        alias,
+                        col,
+                        this.getUnionObject(prop.type.name)
+                    )
+                    break
+                case 'fk': {
+                    let {id, ...restFields} = fields[key]
+                    let on: string
+                    if (object.kind == 'entity') {
+                        on = this.ident(alias) + '.' + this.ident(toFkColumn(key))
+                    } else {
+                        on = fromJsonCast('ID', prefix, key)
+                    }
+                    let fa = join.add(
+                        toTable(prop.type.foreignEntity),
+                        on
+                    )
+                    columns.push(this.ident(fa) + '."id"')
+                    this.populateColumns(columns, join, restFields, fa, '', this.entity(prop.type.foreignEntity))
+                    break
                 }
-            } else {
-                assert(object.kind == 'entity')
-                let rel = object.relations[key]
-                switch(rel.type) {
-                    case 'FK':
-                        let {id, ...restFields} = fields[key]
-                        let fa = join.add(
-                            toTable(rel.foreignEntity),
-                            alias,
-                            toFkColumn(key)
-                        )
-                        columns.push(this.ident(fa) + '."id"')
-                        this.populateColumns(columns, join, restFields, fa, '', this.entity(rel.foreignEntity))
-                        break
-                    case 'LIST':
-                        columns.push(
-                            'array(' + this.select(rel.entity, toListArgs(fields[key].__arguments), fields[key], {
-                                field: rel.field,
-                                parent: alias
-                            }) + ')'
-                        )
-                        break
-                }
+                case 'list-relation':
+                    columns.push(
+                        'array(' + this.select(prop.type.entity, toListArgs(fields[key].__arguments), fields[key], {
+                            field: prop.type.field,
+                            parent: alias
+                        }) + ')'
+                    )
+                    break
             }
         }
     }
@@ -440,64 +442,48 @@ class QueryBuilder {
         let {AND, OR, ...conditions} = where
         let exps: string[] = []
         for (let key in conditions) {
-            if (entity.relations[key]) {
-                let f_where = conditions[key]
-                if (hasConditions(f_where)) {
-                    let rel = entity.relations[key]
-                    assert(rel.type == 'FK')
-                    exps.push(
-                        this.generateWhere(
-                            join.add(toTable(rel.foreignEntity), alias, toFkColumn(key)),
-                            this.entity(rel.foreignEntity),
-                            f_where,
-                            join
-                        )
-                    )
-                }
-            } else {
-                let opArg = conditions[key]
-                let f = parseWhereField(key)
-                switch(f.op) {
-                    case 'every':
-                        if (hasConditions(opArg)) {
-                            let rel = entity.relations[f.field]
-                            assert(rel.type == 'LIST')
-                            let conditionedFrom = this.select(
-                                rel.entity,
-                                {where: opArg},
-                                undefined,
-                                {parent: alias, field: rel.field}
-                            )
-                            let allFrom = this.select(
-                                rel.entity,
-                                {},
-                                undefined,
-                                {parent: alias, field: rel.field}
-                            )
-                            exps.push(`(SELECT count(*) ${conditionedFrom}) = (SELECT count(*) ${allFrom})`)
-                        }
-                        break
-                    case 'some':
-                    case 'none':
-                        let rel = entity.relations[f.field]
-                        assert(rel.type == 'LIST')
-                        let q = '(SELECT true ' + this.select(
+            let opArg = conditions[key]
+            let f = parseWhereField(key)
+            switch(f.op) {
+                case 'every':
+                    if (hasConditions(opArg)) {
+                        let rel = entity.properties[f.field].type
+                        assert(rel.kind == 'list-relation')
+                        let conditionedFrom = this.select(
                             rel.entity,
-                            {where: opArg, limit: 1},
+                            {where: opArg},
                             undefined,
                             {parent: alias, field: rel.field}
-                        ) + ')'
-                        if (f.op == 'some') {
-                            exps.push(q)
-                        } else {
-                            exps.push(`(SELECT count(*) FROM ${q} ${this.ident(this.aliases.add(key))}) = 0`)
-                        }
-                        break
-                    default: {
-                        let prop = entity.properties[f.field]
-                        assert(prop != null)
-                        this.addPropCondition(exps, alias, f.field, prop.type, f.op, opArg)
+                        )
+                        let allFrom = this.select(
+                            rel.entity,
+                            {},
+                            undefined,
+                            {parent: alias, field: rel.field}
+                        )
+                        exps.push(`(SELECT count(*) ${conditionedFrom}) = (SELECT count(*) ${allFrom})`)
                     }
+                    break
+                case 'some':
+                case 'none':
+                    let rel = entity.properties[f.field].type
+                    assert(rel.kind == 'list-relation')
+                    let q = '(SELECT true ' + this.select(
+                        rel.entity,
+                        {where: opArg, limit: 1},
+                        undefined,
+                        {parent: alias, field: rel.field}
+                    ) + ')'
+                    if (f.op == 'some') {
+                        exps.push(q)
+                    } else {
+                        exps.push(`(SELECT count(*) FROM ${q} ${this.ident(this.aliases.add(key))}) = 0`)
+                    }
+                    break
+                default: {
+                    let prop = entity.properties[f.field]
+                    assert(prop != null)
+                    this.addPropCondition(exps, join, alias, '', f.field, prop.type, f.op, opArg)
                 }
             }
         }
@@ -527,16 +513,16 @@ class QueryBuilder {
         }
     }
 
-    private addPropCondition(exps: string[], aliasOrPrefix: string, field: string, propType: PropType, op: WhereOp, arg: any, isJson?: boolean): void {
+    private addPropCondition(exps: string[], join: FkJoinSet, alias: string, prefix: string, field: string, propType: PropType, op: WhereOp, arg: any, isJson?: boolean): void {
         let lhs = isJson
-            ? `${aliasOrPrefix}->'${field}'`
-            : this.ident(aliasOrPrefix) + '.' + this.ident(toColumn(field))
+            ? `${prefix}->'${field}'`
+            : this.ident(alias) + '.' + this.ident(toColumn(field))
 
         switch(propType.kind) {
             case 'scalar':
             case 'enum': {
                 if (isJson) {
-                    lhs = fromJsonCast(propType.name, aliasOrPrefix, field)
+                    lhs = fromJsonCast(propType.name, prefix, field)
                 }
                 switch(op) {
                     case 'in':
@@ -577,25 +563,48 @@ class QueryBuilder {
                         exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${param}`)
                     }
                 }
-                return
+                break
             }
             case 'union': {
                 assert(op == 'eq') // meaning no operator
                 for (let key in arg) {
                     let f = parseWhereField(key)
                     let unionPropType = this.getUnionPropType(propType.name, f.field)
-                    this.addPropCondition(exps, lhs, f.field, unionPropType, f.op, arg[key], true)
+                    this.addPropCondition(exps, join, alias, lhs, f.field, unionPropType, f.op, arg[key], true)
                 }
-                return
+                break
             }
             case 'object': {
                 assert(op == 'eq') // meaning no operator
                 let object = this.object(propType.name)
                 for (let key in arg) {
                     let f = parseWhereField(key)
-                    this.addPropCondition(exps, lhs, f.field, object.properties[f.field].type, f.op, arg[key], true)
+                    this.addPropCondition(exps, join, alias, lhs, f.field, object.properties[f.field].type, f.op, arg[key], true)
                 }
-                return
+                break
+            }
+            case 'fk': {
+                assert(op == 'eq')
+                if (hasConditions(arg)) {
+                    let on: string
+                    if (isJson) {
+                        on = fromJsonCast('ID', prefix, field)
+                    } else {
+                        on = this.ident(alias) + '.' + toFkColumn(field)
+                    }
+                    exps.push(
+                        this.generateWhere(
+                            join.add(
+                                toTable(propType.foreignEntity),
+                                on
+                            ),
+                            this.entity(propType.foreignEntity),
+                            arg,
+                            join
+                        )
+                    )
+                }
+                break
             }
             default:
                 throw new Error(`Where condition on field ${field} of kind ${propType.kind}`)
@@ -630,56 +639,51 @@ class QueryBuilder {
             if (key == '__arguments') {
                 continue
             }
-            if (object.properties[key]) {
-                let prop = object.properties[key]
-                switch(prop.type.kind) {
-                    case 'scalar':
-                    case 'enum':
-                        rec[key] = row[idx]
-                        idx += 1
-                        break
-                    case 'object': {
-                        let m = this.mapRow(row, idx, this.object(prop.type.name), fields[key])
+            let prop = object.properties[key]
+            switch(prop.type.kind) {
+                case 'scalar':
+                case 'enum':
+                    rec[key] = row[idx]
+                    idx += 1
+                    break
+                case 'object': {
+                    // FIXME: null case
+                    let m = this.mapRow(row, idx, this.object(prop.type.name), fields[key])
+                    rec[key] = m.rec
+                    idx = m.idx
+                    break
+                }
+                case 'union': {
+                    let isTypeOf = row[idx]
+                    idx += 1
+                    let m = this.mapRow(row, idx, this.getUnionObject(prop.type.name), fields[key])
+                    idx = m.idx
+                    if (isTypeOf != null) {
+                        m.rec.isTypeOf = isTypeOf
                         rec[key] = m.rec
-                        idx = m.idx
-                        break
                     }
-                    case 'union': {
-                        let isTypeOf = row[idx]
-                        idx += 1
-                        let m = this.mapRow(row, idx, this.getUnionObject(prop.type.name), fields[key])
-                        idx = m.idx
-                        if (isTypeOf != null) {
-                            m.rec.isTypeOf = isTypeOf
-                            rec[key] = m.rec
-                        }
-                        break
+                    break
+                }
+                case 'fk': {
+                    let {id: _id, ...restFields} = fields[key]
+                    let id = row[idx]
+                    idx += 1
+                    let m = this.mapRow(row, idx, this.entity(prop.type.foreignEntity), restFields)
+                    idx = m.idx
+                    if (id != null) {
+                        // the mapping above is valid only if entity actually exists,
+                        // otherwise all props are just nulls
+                        m.rec.id = id
+                        rec[key] = m.rec
                     }
-                    default:
-                        throw new Error(`Property ${key} has unsupported kind ${prop.type.kind}`)
+                    break
                 }
-            } else {
-                assert(object.kind == 'entity')
-                let rel = object.relations[key]
-                switch(rel.type) {
-                    case 'FK':
-                        let {id: _id, ...restFields} = fields[key]
-                        let id = row[idx]
-                        idx += 1
-                        let m = this.mapRow(row, idx, this.entity(rel.foreignEntity), restFields)
-                        idx = m.idx
-                        if (id != null) {
-                            // the mapping above is valid only if entity actually exists,
-                            // otherwise all props are just nulls
-                            m.rec.id = id
-                            rec[key] = m.rec
-                        }
-                        break
-                    case 'LIST':
-                        rec[key] = this.toResult(row[idx], rel.entity, fields[key])
-                        idx += 1
-                        break
-                }
+                case 'list-relation':
+                    rec[key] = this.toResult(row[idx], prop.type.entity, fields[key])
+                    idx += 1
+                    break
+                default:
+                    throw new Error(`Property ${key} has unsupported kind ${prop.type.kind}`)
             }
         }
         return {rec, idx}
@@ -720,13 +724,12 @@ interface ListSubquery {
 
 
 /**
- * LEFT OUTER JOIN {table} {alias} on {alias}.id = {on_alias}.{on_field}
+ * LEFT OUTER JOIN {table} {alias} on {alias}.id = {on}
  */
 interface FK_Join {
     table: string
     alias: string
-    on_alias: string
-    on_field: string
+    on: string
 }
 
 
@@ -735,15 +738,14 @@ class FkJoinSet {
 
     constructor(private aliases: AliasSet) {}
 
-    add(table: string, on_alias: string, on_field: string): string {
-        let key = table + '  ' + on_alias + '  ' + on_field
+    add(table: string, on: string): string {
+        let key = table + '  ' + on
         let e = this.joins.get(key)
         if (!e) {
             e = {
                 table,
                 alias: this.aliases.add(table),
-                on_alias,
-                on_field
+                on
             }
             this.joins.set(key, e)
         }
@@ -758,7 +760,7 @@ class FkJoinSet {
         let e = escapeIdentifier
         let out = ''
         this.joins.forEach(join => {
-            out += `\nLEFT OUTER JOIN ${e(join.table)} ${e(join.alias)} ON ${e(join.alias)}."id" = ${e(join.on_alias)}.${e(join.on_field)}`
+            out += `\nLEFT OUTER JOIN ${e(join.table)} ${e(join.alias)} ON ${e(join.alias)}."id" = ${join.on}`
         })
         return out
     }
