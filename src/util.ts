@@ -82,3 +82,8 @@ export class Output {
 export function ensureArray<T>(item: T | T[]): T[] {
     return Array.isArray(item) ? item : [item]
 }
+
+
+export function unsupportedCase(value: string): Error {
+    return new Error(`Unsupported case: ${value}`)
+}

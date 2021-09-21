@@ -26,5 +26,9 @@ export function buildUnionProps(model: Model, unionName: string): JsonObject {
         assert(object.kind == 'object')
         Object.assign(properties, object.properties)
     }
+    properties.isTypeOf = {
+        type: {kind: 'scalar', name: 'String'},
+        nullable: false
+    }
     return {kind: 'object', properties}
 }
