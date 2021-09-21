@@ -56,6 +56,7 @@ export class QueryBuilder {
         )
 
         let whereExp = ''
+        let orderByExps: string[] = []
         let out = ''
 
         if (fields) {
@@ -74,6 +75,12 @@ export class QueryBuilder {
             whereExp = this.generateWhere(cursor, args.where)
         }
 
+        let orderByInput = args.orderBy && ensureArray(args.orderBy)
+        if (orderByInput?.length) {
+            let orderBy = parseOrderBy(this.model, entityName, orderByInput)
+            this.populateOrderBy(orderByExps, cursor, orderBy)
+        }
+
         if (join.isNotEmpty()) {
             out += join.render(name => this.ident(name))
         }
@@ -87,12 +94,8 @@ export class QueryBuilder {
             out += '\nWHERE ' + whereExp
         }
 
-        let orderByInput = args.orderBy && ensureArray(args.orderBy)
-        if (orderByInput?.length) {
-            let orderBy = parseOrderBy(this.model, entityName, orderByInput)
-            let exps: string[] = []
-            this.populateOrderBy(exps, cursor, orderBy)
-            out += '\nORDER BY ' + exps.join(', ')
+        if (orderByExps.length > 0) {
+            out += '\nORDER BY ' + orderByExps.join(', ')
         }
 
         if (args.limit) {
@@ -411,7 +414,7 @@ export class QueryBuilder {
     }
 
     private query(sql: string): Promise<QueryArrayResult> {
-        console.log('\n' + sql)
+        // console.log('\n' + sql)
         return this.db.query({text: sql, rowMode: 'array'}, this.params)
     }
 }

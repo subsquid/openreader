@@ -19,7 +19,13 @@
   },
   "devDependencies": {
     "@types/inflected": "^1.1.29",
+    "@types/mocha": "^9.0.0",
+    "@types/node-fetch": "^2.5.12",
     "@types/pg": "^8.6.1",
+    "dotenv": "^10.0.0",
+    "expect": "^27.2.1",
+    "mocha": "^9.1.1",
+    "node-fetch": "^2.6.3",
     "typescript": "^4.4.2"
   }
 }

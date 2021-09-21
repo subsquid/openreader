@@ -1,7 +1,7 @@
 import {ApolloServer} from "apollo-server"
 import {GraphQLRequestContext} from "apollo-server-types"
 import {GraphQLSchema} from "graphql"
-import {Pool, PoolClient, PoolConfig} from "pg"
+import {Pool, PoolClient} from "pg"
 import {buildServerSchema} from "./gql/opencrud"
 import {getModel} from "./gql/schema"
 import {buildResolvers, ResolverContext} from "./resolver"
@@ -9,20 +9,20 @@ import {buildResolvers, ResolverContext} from "./resolver"
 
 export interface ServerOptions {
     schema: GraphQLSchema
-    db?: PoolConfig
+    db: Pool
 }
 
 
 export function createServer(options: ServerOptions): ApolloServer {
     let model = getModel(options.schema)
-    let pool = new Pool(options.db)
+    let pool = options.db
     return new ApolloServer({
         typeDefs: buildServerSchema(options.schema),
         resolvers: buildResolvers(model),
         context: async () => {
             let db = await pool.connect()
             try {
-                await db.query('START TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                await db.query('START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY')
             } catch(e) {
                 db.release()
                 throw e

@@ -2,7 +2,7 @@
 
 import * as fs from "fs"
 import {parse, Source, validateSchema} from "graphql"
-import {PoolConfig} from "pg"
+import {Pool, PoolConfig} from "pg"
 import {buildSchema} from "./gql/schema"
 import {createServer} from "./server"
 
@@ -30,7 +30,7 @@ function main() {
         process.exit(1)
     }
 
-    let db = readDbConfig()
+    let db = new Pool(readDbConfig())
 
     let server = createServer({
         schema,
@@ -51,7 +51,7 @@ function main() {
 }
 
 
-function readDbConfig(): PoolConfig {
+export function readDbConfig(): PoolConfig {
     let db: PoolConfig = {}
     if (process.env.DB_HOST) {
         db.host = process.env.DB_HOST

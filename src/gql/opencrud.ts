@@ -54,7 +54,7 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 let prop = object.properties[key]
                 let gqlType = renderPropType(prop)
                 if (prop.type.kind == 'list-relation') {
-                    out.line(`${lowerCaseFirst(pluralize(prop.type.entity))}${manyArguments(prop.type.entity)}: ${gqlType}`)
+                    out.line(`${key}${manyArguments(prop.type.entity)}: ${gqlType}`)
                 } else {
                     out.line(`${key}: ${gqlType}`)
                 }
