@@ -2,12 +2,16 @@ import {useDatabase, useServer} from "./util/setup"
 
 describe('scalars', function() {
     useDatabase([
-        `create table scalar (id text primary key, "boolean" bool, "bigint" numeric, "bytes" bytea, "string" text)`,
+        `create table scalar (id text primary key, "boolean" bool, "bigint" numeric, "string" text, "bytes" bytea)`,
         `insert into scalar (id, "boolean") values ('1', true)`,
         `insert into scalar (id, "boolean") values ('2', false)`,
         `insert into scalar (id, "bigint") values ('3', 1000000000000000000000000000000000000)`,
         `insert into scalar (id, "bigint") values ('4', 2000000000000000000000000000000000000)`,
         `insert into scalar (id, "bigint") values ('5', 5)`,
+        `insert into scalar (id, "string") values ('6', 'foo bar baz')`,
+        `insert into scalar (id, "string") values ('7', 'bar baz foo')`,
+        `insert into scalar (id, "string") values ('8', 'baz foo bar')`,
+        `insert into scalar (id, "string") values ('9', 'hello')`,
     ])
 
     const client = useServer(`
@@ -116,6 +120,30 @@ describe('scalars', function() {
                     {id: '3'},
                     {id: '5'},
                 ]
+            })
+        })
+    })
+
+    describe('String', function () {
+        it('supports where conditions', function () {
+            return client.test(`
+                query {
+                    starts_with: scalars(where: {string_starts_with: "foo"} orderBy: id_ASC) { id }
+                    not_starts_with: scalars(where: {string_not_starts_with: "foo"} orderBy: id_ASC) { id }
+                    ends_with: scalars(where: {string_ends_with: "foo"} orderBy: id_ASC) { id }
+                    not_ends_with: scalars(where: {string_not_ends_with: "foo"} orderBy: id_ASC) { id }
+                    contains: scalars(where: {string_contains: "foo"} orderBy: id_ASC) { id }
+                    not_contains: scalars(where: {string_not_contains: "foo"} orderBy: id_ASC) { id }
+                    case_sensitive: scalars(where: {string_contains: "Foo"} orderBy: id_ASC) { id }
+                }
+            `, {
+                starts_with: [{id: '6'}],
+                not_starts_with: [{id: '7'}, {id: '8'}, {id: '9'}],
+                ends_with: [{id: '7'}],
+                not_ends_with: [{id: '6'}, {id: '8'}, {id: '9'}],
+                contains: [{id: '6'}, {id: '7'}, {id: '8'}],
+                not_contains: [{id: '9'}],
+                case_sensitive: []
             })
         })
     })

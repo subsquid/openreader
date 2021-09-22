@@ -31,7 +31,7 @@ export function databaseInit(sql: string[]): Promise<void> {
 
 export function databaseDelete(): Promise<void> {
     return withClient(async client => {
-        await client.query(`DROP SCHEMA public CASCADE`)
+        await client.query(`DROP SCHEMA IF EXISTS public CASCADE`)
         await client.query(`CREATE SCHEMA public`)
     })
 }

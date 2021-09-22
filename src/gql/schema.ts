@@ -17,7 +17,7 @@ import {
     GraphQLUnionType
 } from "graphql"
 import {DirectiveNode} from "graphql/language/ast"
-import {Entity, Interface, JsonObject, Model, Prop, PropType} from "../model"
+import {Model, Prop, PropType} from "../model"
 import {scalars_list} from "../scalars"
 import {weakMemo} from "../util"
 
@@ -67,8 +67,15 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
         :  type instanceof GraphQLInterfaceType ? 'interface' : 'object'
 
     let properties: Record<string, Prop> = {}
-    let fields = type.getFields()
+    let interfaces: string[] = []
 
+    if (kind != 'interface') {
+        model[type.name] = {kind, properties, interfaces}
+    } else {
+        model[type.name] = {kind, properties}
+    }
+
+    let fields = type.getFields()
     if (kind == 'entity') {
         if (fields.id == null) {
             properties.id = {
@@ -168,15 +175,11 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
         }
     }
 
-
     if (kind != 'interface') {
-        let interfaces = type.getInterfaces().map(i => {
+        type.getInterfaces().forEach(i => {
             addEntityOrJsonObjectOrInterface(model, i)
-            return i.name
+            interfaces.push(i.name)
         })
-        model[type.name] = {kind, properties, interfaces}
-    } else {
-        model[type.name] = {kind, properties}
     }
 }
 
@@ -184,6 +187,12 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
 function addUnion(model: Model, type: GraphQLUnionType): void {
     if (model[type.name]) return
     let variants: string[] = []
+
+    model[type.name] = {
+        kind: 'union',
+        variants
+    }
+
     type.getTypes().forEach(obj => {
         if (isEntityType(obj)) {
             throw new Error(`union ${type.name} has entity ${obj.name} as a variant. Entities in union types are not supported`)
@@ -191,23 +200,21 @@ function addUnion(model: Model, type: GraphQLUnionType): void {
         addEntityOrJsonObjectOrInterface(model, obj)
         variants.push(obj.name)
     })
-    model[type.name] = {
-        kind: 'union',
-        variants
-    }
 }
 
 
 function addEnum(model: Model, type: GraphQLEnumType): void {
     if (model[type.name]) return
     let values: Record<string, {}> = {}
-    type.getValues().forEach(item => {
-        values[item.name] = {}
-    })
+
     model[type.name] = {
         kind: 'enum',
         values
     }
+
+    type.getValues().forEach(item => {
+        values[item.name] = {}
+    })
 }
 
 

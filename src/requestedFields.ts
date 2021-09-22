@@ -79,13 +79,19 @@ function collectRequestedFields(model: Model, objectName: string, schema: GraphQ
             case 'union':{
                 let union = model[propType.name]
                 assert(union.kind == 'union')
-                let map: Record<string, RequestedFields> = {}
+                let children: RequestedFields = {}
                 union.variants.forEach(name => {
-                    map[name] = collectRequestedFields(model, name, schema, f)
+                    let variantFields = collectRequestedFields(model, name, schema, f)
+                    for (let key in variantFields) {
+                        let field = variantFields[key]
+                        field.requests.forEach(req => {
+                            addRequest(children, key, field.propType, {...req, ifType: name})
+                        })
+                    }
                 })
                 addRequest(requested, f.name, propType, {
                     alias,
-                    children: mergeUnionRequests(map),
+                    children,
                     index: 0
                 })
                 break
@@ -95,28 +101,6 @@ function collectRequestedFields(model: Model, objectName: string, schema: GraphQ
         }
     }
 
-    return requested
-}
-
-
-function mergeUnionRequests(union: Record<string, RequestedFields>): RequestedFields {
-    let requested: RequestedFields = {}
-    for (let name in union) {
-        let fields = union[name]
-        for (let key in fields) {
-            let field = fields[key]
-            switch(field.propType.kind) {
-                case 'scalar':
-                case 'enum':
-                    requested[key] = field
-                    break
-                default:
-                    field.requests.forEach(req => {
-                        addRequest(requested, key, field.propType, {...req, ifType: name})
-                    })
-            }
-        }
-    }
     return requested
 }
 

@@ -471,12 +471,12 @@ class Cursor {
             case 'object':
                 object = this.model[prop.type.name] as JsonObject
                 alias = this.alias
-                prefix = `${this.prefix}->'${propName}'`
+                prefix = this.field(propName)
                 break
             case 'union':
                 object = getUnionProps(this.model, prop.type.name)
                 alias = this.alias
-                prefix = `${this.prefix}->'${propName}'`
+                prefix = this.field(propName)
                 break
             case 'fk':
                 object = this.model[prop.type.foreignEntity] as Entity
@@ -501,6 +501,14 @@ class Cursor {
             alias,
             prefix
         )
+    }
+
+    private field(name: string): string {
+        if (this.object.kind == 'entity') {
+            return this.column(name)
+        } else {
+            return `${this.prefix}->'${name}'`
+        }
     }
 
     private column(name: string) {

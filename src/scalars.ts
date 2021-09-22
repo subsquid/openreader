@@ -104,7 +104,7 @@ export function fromJsonCast(scalarType: string, objSqlExp: string, prop: string
     switch(scalarType) {
         case 'Int':
         case 'Float':
-            return `(${objSqlExp}->'${prop}')::numeric`
+            return `(${objSqlExp}->>'${prop}')::numeric`
         default:
             return fromTransportCast(scalarType, `${objSqlExp}->>'${prop}'`)
     }
