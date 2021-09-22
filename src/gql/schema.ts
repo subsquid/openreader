@@ -68,11 +68,12 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
 
     let properties: Record<string, Prop> = {}
     let interfaces: string[] = []
+    let description = type.description || undefined
 
     if (kind != 'interface') {
-        model[type.name] = {kind, properties, interfaces}
+        model[type.name] = {kind, properties, interfaces, description}
     } else {
-        model[type.name] = {kind, properties}
+        model[type.name] = {kind, properties, description}
     }
 
     let fields = type.getFields()
@@ -96,6 +97,7 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
         let f: GraphQLField<any, any> = fields[key]
         let fieldType = f.type
         let nullable = true
+        let description = f.description || undefined
         if (fieldType instanceof GraphQLNonNull) {
             nullable = false
             fieldType = fieldType.ofType
@@ -108,7 +110,8 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
                     kind: 'scalar',
                     name: fieldType.name
                 }),
-                nullable
+                nullable,
+                description
             }
         } else if (fieldType instanceof GraphQLEnumType) {
             addEnum(model, fieldType)
@@ -117,7 +120,8 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
                     kind: 'enum',
                     name: fieldType.name
                 }),
-                nullable
+                nullable,
+                description
             }
         } else if (fieldType instanceof GraphQLUnionType) {
             addUnion(model, fieldType)
@@ -126,7 +130,8 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
                     kind: 'union',
                     name: fieldType.name
                 }),
-                nullable
+                nullable,
+                description
             }
         } else if (fieldType instanceof GraphQLObjectType) {
             if (isEntityType(fieldType)) {
@@ -137,7 +142,8 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
                                 kind: 'fk',
                                 foreignEntity: fieldType.name
                             },
-                            nullable
+                            nullable,
+                            description
                         }
                         break
                     case 1:
@@ -154,7 +160,8 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
                                 entity: fieldType.name,
                                 field: derivedFromValueNode.value
                             },
-                            nullable: false
+                            nullable: false,
+                            description
                         }
                         break
                     default:
@@ -167,7 +174,8 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
                         kind: 'object',
                         name: fieldType.name
                     }),
-                    nullable
+                    nullable,
+                    description
                 }
             }
         } else {
@@ -190,7 +198,8 @@ function addUnion(model: Model, type: GraphQLUnionType): void {
 
     model[type.name] = {
         kind: 'union',
-        variants
+        variants,
+        description: type.description || undefined
     }
 
     type.getTypes().forEach(obj => {
@@ -209,7 +218,8 @@ function addEnum(model: Model, type: GraphQLEnumType): void {
 
     model[type.name] = {
         kind: 'enum',
-        values
+        values,
+        description: type.description || undefined
     }
 
     type.getValues().forEach(item => {
@@ -252,7 +262,7 @@ function wrapWithList(nulls: boolean[], dataType: PropType): PropType {
 
 
 function unsupportedFieldTypeError(type: string, field: string): Error {
-    return new Error(`Property ${type}.${field} has incorrect type`)
+    return new Error(`Property ${type}.${field} has unsupported type`)
 }
 
 

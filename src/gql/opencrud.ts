@@ -1,6 +1,6 @@
 import {gql} from "apollo-server"
 import assert from "assert"
-import {DocumentNode, GraphQLEnumType, GraphQLSchema} from "graphql"
+import {DocumentNode, GraphQLEnumType, GraphQLSchema, print} from "graphql"
 import {Entity, Enum, Interface, JsonObject, Prop, Union} from "../model"
 import {getOrderByMapping} from "../orderBy"
 import {scalars_list} from "../scalars"
@@ -64,10 +64,12 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 head += ` implements ${object.interfaces.join(' & ')}`
             }
         }
+        generateDescription(object.description)
         out.block(head, () => {
             for (let key in object.properties) {
                 let prop = object.properties[key]
                 let gqlType = renderPropType(prop)
+                generateDescription(prop.description)
                 if (prop.type.kind == 'list-relation') {
                     out.line(`${key}${manyArguments(prop.type.entity)}: ${gqlType}`)
                 } else {
@@ -231,11 +233,13 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
     }
 
     function generateUnionType(name: string, union: Union) {
+        generateDescription(union.description)
         out.line(`union ${name} = ${union.variants.join(' | ')}`)
         out.line()
     }
 
     function generateEnumType(name: string, e: Enum): void {
+        generateDescription(e.description)
         out.block(`enum ${name}`, () => {
             for (let key in e.values) {
                 out.line(key)
@@ -265,6 +269,15 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
             out.line(`totalCount: Int!`)
         })
         out.line()
+    }
+
+    function generateDescription(description?: string): void {
+        if (description) {
+            out.line(print({
+                kind: 'StringValue',
+                value: description
+            }))
+        }
     }
 
     return out.toString()

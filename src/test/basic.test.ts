@@ -28,9 +28,15 @@ describe('basic tests', function() {
             history: [HistoricalBalance!] @derivedFrom(field: "account")
         }
 
+        "Historical record of account balance"
         type HistoricalBalance implements HasBalance @entity {
+            "Unique identifier"
             id: ID!
+            
+            "Related account"
             account: Account!
+            
+            "Balance"
             balance: Int!
         }
     `)
@@ -307,5 +313,27 @@ describe('basic tests', function() {
                 ]
             }
         )
+    })
+
+    it('supports descriptions', function () {
+        return client.test(`
+            query {
+                HistoricalBalance: __type(name: "HistoricalBalance") {
+                    description
+                    fields {
+                        description
+                    }
+                }
+            }
+        `, {
+            HistoricalBalance: {
+                description: 'Historical record of account balance',
+                fields: [
+                    {description: 'Unique identifier'},
+                    {description: 'Related account'},
+                    {description: 'Balance'},
+                ]
+            }
+        })
     })
 })
