@@ -6,6 +6,7 @@ import {
     extendSchema,
     GraphQLEnumType,
     GraphQLField,
+    GraphQLInterfaceType,
     GraphQLList,
     GraphQLNamedType,
     GraphQLNonNull,
@@ -16,7 +17,7 @@ import {
     GraphQLUnionType
 } from "graphql"
 import {DirectiveNode} from "graphql/language/ast"
-import {Model, Prop, PropType} from "../model"
+import {Entity, Interface, JsonObject, Model, Prop, PropType} from "../model"
 import {scalars_list} from "../scalars"
 import {weakMemo} from "../util"
 
@@ -45,7 +46,7 @@ export function buildModel(schema: GraphQLSchema): Model {
     for (let key in types) {
         let type = types[key]
         if (isEntityType(type)) {
-            addEntityOrJsonObject(model, type as GraphQLObjectType)
+            addEntityOrJsonObjectOrInterface(model, type as GraphQLObjectType)
         }
     }
     validateUnionTypes(model)
@@ -58,9 +59,13 @@ function isEntityType(type: GraphQLNamedType): boolean {
 }
 
 
-function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
+function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType | GraphQLInterfaceType): void {
     if (model[type.name]) return
-    let kind: 'entity' | 'object' = isEntityType(type) ? 'entity' : 'object'
+
+    let kind: 'entity' | 'object' | 'interface' = isEntityType(type)
+        ? 'entity'
+        :  type instanceof GraphQLInterfaceType ? 'interface' : 'object'
+
     let properties: Record<string, Prop> = {}
     let fields = type.getFields()
 
@@ -75,7 +80,7 @@ function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
                 && fields.id.type.ofType instanceof GraphQLScalarType
                 && fields.id.type.ofType.name === 'ID'
             if (!correctIdType) {
-                throw unsupportedFieldError(type.name, 'id')
+                throw unsupportedFieldTypeError(type.name, 'id')
             }
         }
     }
@@ -146,10 +151,10 @@ function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
                         }
                         break
                     default:
-                        throw unsupportedFieldError(type.name, key)
+                        throw unsupportedFieldTypeError(type.name, key)
                 }
             } else {
-                addEntityOrJsonObject(model, fieldType)
+                addEntityOrJsonObjectOrInterface(model, fieldType)
                 properties[key] = {
                     type: wrapWithList(list.nulls, {
                         kind: 'object',
@@ -159,12 +164,19 @@ function addEntityOrJsonObject(model: Model, type: GraphQLObjectType): void {
                 }
             }
         } else {
-            throw unsupportedFieldError(type.name, key)
+            throw unsupportedFieldTypeError(type.name, key)
         }
     }
-    model[type.name] = {
-        kind,
-        properties
+
+
+    if (kind != 'interface') {
+        let interfaces = type.getInterfaces().map(i => {
+            addEntityOrJsonObjectOrInterface(model, i)
+            return i.name
+        })
+        model[type.name] = {kind, properties, interfaces}
+    } else {
+        model[type.name] = {kind, properties}
     }
 }
 
@@ -176,7 +188,7 @@ function addUnion(model: Model, type: GraphQLUnionType): void {
         if (isEntityType(obj)) {
             throw new Error(`union ${type.name} has entity ${obj.name} as a variant. Entities in union types are not supported`)
         }
-        addEntityOrJsonObject(model, obj)
+        addEntityOrJsonObjectOrInterface(model, obj)
         variants.push(obj.name)
     })
     model[type.name] = {
@@ -232,8 +244,8 @@ function wrapWithList(nulls: boolean[], dataType: PropType): PropType {
 }
 
 
-function unsupportedFieldError(type: string, field: string): Error {
-    return new Error(`${type} has a property ${field} of unsupported type`)
+function unsupportedFieldTypeError(type: string, field: string): Error {
+    return new Error(`Property ${type}.${field} has incorrect type`)
 }
 
 

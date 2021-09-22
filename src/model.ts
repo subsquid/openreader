@@ -1,17 +1,25 @@
 export type Name = string
 
 
-export type Model = Record<Name, Entity | JsonObject | Union | Enum>
+export type Model = Record<Name, Entity | JsonObject | Interface | Union | Enum>
 
 
 export interface Entity {
     kind: 'entity'
     properties: Record<Name, Prop>
+    interfaces?: Name[]
 }
 
 
 export interface JsonObject {
     kind: 'object'
+    properties: Record<Name, Prop>
+    interfaces?: Name[]
+}
+
+
+export interface Interface {
+    kind: 'interface'
     properties: Record<Name, Prop>
 }
 

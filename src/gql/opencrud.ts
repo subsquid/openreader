@@ -1,7 +1,7 @@
 import {gql} from "apollo-server"
 import assert from "assert"
 import {DocumentNode, GraphQLEnumType, GraphQLSchema} from "graphql"
-import {Entity, Enum, JsonObject, Prop, Union} from "../model"
+import {Entity, Enum, Interface, JsonObject, Prop, Union} from "../model"
 import {getOrderByMapping} from "../orderBy"
 import {scalars_list} from "../scalars"
 import {lowerCaseFirst, Output, pluralize} from "../util"
@@ -29,6 +29,9 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 }
                 generateObjectType(name, item)
                 break
+            case 'interface':
+                generateObjectType(name, item)
+                break
             case 'union':
                 generateUnionWhereInput(name, item)
                 generateUnionType(name, item)
@@ -48,8 +51,17 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         }
     })
 
-    function generateObjectType(name: string, object: Entity | JsonObject): void {
-        out.block(`type ${name}`, () => {
+    function generateObjectType(name: string, object: Entity | JsonObject | Interface): void {
+        let head: string
+        if (object.kind == 'interface') {
+            head = `interface ${name}`
+        } else {
+            head = `type ${name}`
+            if (object.interfaces?.length) {
+                head += ` implements ${object.interfaces.join(' & ')}`
+            }
+        }
+        out.block(head, () => {
             for (let key in object.properties) {
                 let prop = object.properties[key]
                 let gqlType = renderPropType(prop)

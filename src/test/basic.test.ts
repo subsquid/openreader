@@ -17,14 +17,18 @@ describe('basic tests', function() {
     ])
 
     const client = useServer(`
-        type Account @entity {
+        interface HasBalance {
+            balance: Int!
+        }
+    
+        type Account implements HasBalance @entity {
             id: ID!
             wallet: String!
             balance: Int!
             history: [HistoricalBalance!] @derivedFrom(field: "account")
         }
 
-        type HistoricalBalance @entity {
+        type HistoricalBalance implements HasBalance @entity {
             id: ID!
             account: Account!
             balance: Int!
@@ -199,7 +203,7 @@ describe('basic tests', function() {
         )
     })
 
-    it.skip('supports gql fragments on interfaces', function () {
+    it('supports gql fragments on interfaces', function () {
         return client.test(
             `query {
                 accounts(where: {id: "1"}) {
