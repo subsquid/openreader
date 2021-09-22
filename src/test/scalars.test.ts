@@ -24,7 +24,7 @@ describe('scalars', function() {
     `)
 
     describe('Boolean', function () {
-        it('transfers correctly', function () {
+        it('outputs correctly', function () {
             return client.test(`
                 query {
                     scalars(where: {id_in: ["1", "2"]} orderBy: id_ASC) {
@@ -58,7 +58,7 @@ describe('scalars', function() {
     })
 
     describe('BigInt', function () {
-        it('transfers correctly', function () {
+        it('outputs correctly', function () {
             return client.test(`
                 query {
                     scalars(where: {id_in: ["3", "4", "5"]} orderBy: id_ASC) {

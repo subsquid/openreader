@@ -34,7 +34,7 @@ describe('unions', function () {
         }
     `)
 
-    it('fetching', function () {
+    it('output', function () {
         return client.test(`
             query {
                 equipment(orderBy: id_ASC) {
