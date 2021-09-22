@@ -69,6 +69,44 @@ describe('basic tests', function() {
         )
     })
 
+    it('supports by id query', function () {
+        return client.test(
+            `query {
+                a3: accountById(id: "3") {
+                    id
+                    wallet
+                }
+                nonexistent: accountById(id: "foo") {
+                    id
+                    wallet
+                }
+            }`,
+            {
+                a3: {id: '3', wallet: 'c'},
+                nonexistent: null
+            }
+        )
+    })
+
+    it('supports by unique input query', function () {
+        return client.test(
+            `query {
+                a2: accountByUniqueInput(where: {id: "2"}) {
+                    id
+                    wallet
+                }
+                nonexistent: accountByUniqueInput(where: {id: "foo"}) {
+                    id
+                    wallet
+                }
+            }`,
+            {
+                a2: {id: '2', wallet: 'b'},
+                nonexistent: null
+            }
+        )
+    })
+
     it('can fetch deep relations', function () {
         return client.test(
             `query {

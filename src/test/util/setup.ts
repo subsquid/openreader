@@ -50,10 +50,10 @@ export function useServer(schema: string): Client {
     let db = new Pool(db_config)
     let server = createServer({
         schema: buildSchema(gql(schema)),
-        db
+        db,
     })
     before(async () => {
-        let info = await server.listen()
+        let info = await server.listen(0)
         client.endpoint = `http://localhost:${info.port}/graphql`
     })
     after(() => db.end())

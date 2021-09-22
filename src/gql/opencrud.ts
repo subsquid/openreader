@@ -19,6 +19,7 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         switch(item.kind) {
             case 'entity':
                 generateOrderByInput(name)
+                generateWhereUniqueInput(name)
                 generateWhereInput(name, item)
                 generateObjectType(name, item)
                 generateEntityConnection(name)
@@ -45,6 +46,8 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
     out.block('type Query', () => {
         for (let name in model) {
             if (model[name].kind == 'entity') {
+                out.line(`${lowerCaseFirst(name)}ById(id: ID!): ${name}`)
+                out.line(`${lowerCaseFirst(name)}ByUniqueInput(where: ${name}WhereUniqueInput!): ${name} @deprecated(reason: "Use \`${lowerCaseFirst(name)}ById\`")`)
                 out.line(`${lowerCaseFirst(pluralize(name))}${manyArguments(name)}: [${name}!]!`)
                 out.line(`${lowerCaseFirst(pluralize(name))}Connection${connectionArguments(name)}: ${name}Connection!`)
             }
@@ -104,6 +107,12 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
             }
         })
         out.line()
+    }
+
+    function generateWhereUniqueInput(entityName: string): void {
+        out.block(`input ${entityName}WhereUniqueInput`, () => {
+            out.line('id: ID!')
+        })
     }
 
     function generateWhereInput(name: string, object: Entity | JsonObject): void {

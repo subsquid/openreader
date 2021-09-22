@@ -1,5 +1,6 @@
 import type {IFieldResolver, IResolvers} from "@graphql-tools/utils"
 import {UserInputError} from "apollo-server"
+import assert from "assert"
 import type {GraphQLResolveInfo} from "graphql"
 import type {ClientBase} from "pg"
 import type {Entity, JsonObject, Model} from "./model"
@@ -14,7 +15,7 @@ import {
 } from "./relayConnection"
 import {connectionRequestedFields, requestedFields} from "./requestedFields"
 import {getScalarResolvers} from "./scalars"
-import {ensureArray, toQueryListField} from "./util"
+import {ensureArray, lowerCaseFirst, toQueryListField} from "./util"
 
 
 export interface ResolverContext {
@@ -34,6 +35,18 @@ export function buildResolvers(model: Model): IResolvers {
                 Query[toQueryListField(name)] = (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
                     return new QueryBuilder(context).executeSelect(name, args, fields)
+                }
+                Query[`${lowerCaseFirst(name)}ById`] = async (source, args, context, info) => {
+                    let fields = requestedFields(model, name, info)
+                    let result = await new QueryBuilder(context).executeSelect(name, {where: {id: args.id}}, fields)
+                    assert(result.length < 2)
+                    return result[0]
+                }
+                Query[`${lowerCaseFirst(name)}ByUniqueInput`] = async (source, args, context, info) => {
+                    let fields = requestedFields(model, name, info)
+                    let result = await new QueryBuilder(context).executeSelect(name, args, fields)
+                    assert(result.length < 2)
+                    return result[0]
                 }
                 Query[toQueryListField(name) + 'Connection'] = (source, args, context, info) => {
                     return resolveEntityConnection(name, args, context, info)
