@@ -49,6 +49,7 @@ function collectRequestedFields(model: Model, objectName: string, schema: GraphQ
         switch(propType.kind) {
             case 'scalar':
             case 'enum':
+            case 'list':
                 requested[f.name] = {
                     propType,
                     requests: [{alias: f.name, index: 0}]
@@ -97,7 +98,7 @@ function collectRequestedFields(model: Model, objectName: string, schema: GraphQ
                 break
             }
             default:
-                throw new Error(`Requested field ${objectName}.${f.name} of unsupported type`)
+                throw new Error(`Field ${objectName}.${f.name} has unsupported type and can't be requested`)
         }
     }
 

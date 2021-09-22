@@ -1,11 +1,17 @@
 import assert from "assert"
 import type {ClientBase, QueryArrayResult} from "pg"
-import type {RequestedFields} from "./requestedFields"
-import type {Entity, JsonObject, Model, Union} from "./model"
+import type {Entity, JsonObject, Model} from "./model"
 import {getUnionProps} from "./model.tools"
 import {OpenCrudOrderByValue, OrderBy, parseOrderBy} from "./orderBy"
+import type {RequestedFields} from "./requestedFields"
 import type {ResolverContext} from "./resolver"
-import {fromJsonCast, fromJsonToTransportCast, fromTransportCast, toTransportCast} from "./scalars"
+import {
+    fromJsonCast,
+    fromJsonToTransportCast,
+    fromTransportCast,
+    toTransportArrayCast,
+    toTransportCast
+} from "./scalars"
 import {ensureArray, toColumn, toFkColumn, toTable, unsupportedCase} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
 
@@ -155,6 +161,7 @@ export class QueryBuilder {
                 switch(field.propType.kind) {
                     case 'scalar':
                     case 'enum':
+                    case 'list':
                         req.index = columns.add(cursor.transport(fieldName))
                         break
                     case 'object':
@@ -192,7 +199,7 @@ export class QueryBuilder {
                         )
                         break
                     default:
-                        throw unsupportedCase(field.propType.kind)
+                        throw unsupportedCase((field as any).propType.kind)
                 }
             }
         }
@@ -363,6 +370,7 @@ export class QueryBuilder {
                 switch(f.propType.kind) {
                     case 'scalar':
                     case 'enum':
+                    case 'list':
                         rec[req.alias] = row[req.index]
                         break
                     case 'object':
@@ -388,7 +396,7 @@ export class QueryBuilder {
                         rec[req.alias] = this.toResult(row[req.index], req.children)
                         break
                     default:
-                        throw unsupportedCase(f.propType.kind)
+                        throw unsupportedCase((f as any).propType.kind)
                 }
             }
         }
@@ -443,11 +451,24 @@ class Cursor {
 
     transport(propName: string): string {
         let prop = this.object.properties[propName]
-        assert(prop.type.kind == 'scalar' || prop.type.kind == 'enum')
-        if (this.object.kind == 'object') {
-            return fromJsonToTransportCast(prop.type.name, this.prefix, propName)
-        } else {
-            return toTransportCast(prop.type.name, this.column(propName))
+        switch(prop.type.kind) {
+            case 'scalar':
+            case 'enum':
+                if (this.object.kind == 'object') {
+                    return fromJsonToTransportCast(prop.type.name, this.prefix, propName)
+                } else {
+                    return toTransportCast(prop.type.name, this.column(propName))
+                }
+            case 'list':
+                let itemType = prop.type.item.type
+                if (this.object.kind == 'object' || itemType.kind != 'scalar' && itemType.kind != 'enum') {
+                    // this is json
+                    return this.field(propName)
+                } else {
+                    return toTransportArrayCast(itemType.name, this.column(propName))
+                }
+            default:
+                throw unsupportedCase(prop.type.kind)
         }
     }
 

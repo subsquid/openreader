@@ -19,6 +19,7 @@ export interface Scalar {
     gql: GraphQLScalarType
     fromStringCast: (sqlExp: string) => string
     toStringCast: (sqlExp: string) => string
+    toStringArrayCast: (sqlExp: string) => string
 }
 
 
@@ -58,6 +59,9 @@ export const scalars: Record<string, Scalar> = {
         },
         toStringCast(exp) {
             return `(${exp})::text`
+        },
+        toStringArrayCast(exp) {
+            return `(${exp})::text[]`
         }
     }
 }
@@ -100,9 +104,20 @@ export function fromTransportCast(scalarType: string, sqlExp: string): string {
 }
 
 
+export function toTransportArrayCast(scalarType: string, sqlExp: string): string {
+    let s = scalars[scalarType]
+    if (s) {
+        return s.toStringArrayCast(sqlExp)
+    } else {
+        return sqlExp
+    }
+}
+
+
 export function fromJsonCast(scalarType: string, objSqlExp: string, prop: string): string {
     switch(scalarType) {
         case 'Int':
+            return `(${objSqlExp}->>'${prop}')::integer`
         case 'Float':
             return `(${objSqlExp}->>'${prop}')::numeric`
         default:
@@ -114,6 +129,7 @@ export function fromJsonCast(scalarType: string, objSqlExp: string, prop: string
 export function fromJsonToTransportCast(scalarType: string, objSqlExp: string, prop: string) {
     switch(scalarType) {
         case 'Int':
+            return `(${objSqlExp}->'${prop}')::integer`
         case 'Float':
             return `(${objSqlExp}->'${prop}')::numeric`
         default:
