@@ -1,7 +1,7 @@
 export type Name = string
 
 
-export type Model = Record<Name, Entity | JsonObject | Interface | Union | Enum>
+export type Model = Record<Name, Entity | JsonObject | Interface | Union | Enum | FTS_Query>
 
 
 export interface Entity extends TypeMeta {
@@ -98,4 +98,16 @@ export interface ListRelPropType {
     kind: 'list-relation'
     entity: Name
     field: Name
+}
+
+
+export interface FTS_Query {
+    kind: 'fts'
+    sources: FTS_Source[]
+}
+
+
+export interface FTS_Source {
+    entity: Name
+    fields: Name[]
 }

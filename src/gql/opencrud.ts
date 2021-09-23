@@ -1,10 +1,10 @@
 import {gql} from "apollo-server"
 import assert from "assert"
 import {DocumentNode, GraphQLEnumType, GraphQLSchema, print} from "graphql"
-import {Entity, Enum, Interface, JsonObject, Prop, Union} from "../model"
+import {Entity, Enum, FTS_Query, Interface, JsonObject, Prop, Union} from "../model"
 import {getOrderByMapping} from "../orderBy"
 import {scalars_list} from "../scalars"
-import {lowerCaseFirst, Output, pluralize} from "../util"
+import {lowerCaseFirst, Output, pluralize, upperCaseFirst} from "../util"
 import {getModel} from "./schema"
 
 
@@ -40,16 +40,23 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
             case 'enum':
                 generateEnumType(name, item)
                 break
+            case 'fts':
+                generateFtsTypes(name, item)
+                break
         }
     }
 
     out.block('type Query', () => {
         for (let name in model) {
-            if (model[name].kind == 'entity') {
+            let item = model[name]
+            if (item.kind == 'entity') {
                 out.line(`${lowerCaseFirst(name)}ById(id: ID!): ${name}`)
                 out.line(`${lowerCaseFirst(name)}ByUniqueInput(where: ${name}WhereUniqueInput!): ${name} @deprecated(reason: "Use \`${lowerCaseFirst(name)}ById\`")`)
                 out.line(`${lowerCaseFirst(pluralize(name))}${manyArguments(name)}: [${name}!]!`)
                 out.line(`${lowerCaseFirst(pluralize(name))}Connection${connectionArguments(name)}: ${name}Connection!`)
+            }
+            if (item.kind == 'fts') {
+                generateFtsQuery(name, item)
             }
         }
     })
@@ -269,6 +276,25 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
             out.line(`totalCount: Int!`)
         })
         out.line()
+    }
+
+    function generateFtsTypes(name: string, query: FTS_Query): void {
+        let itemType = upperCaseFirst(name) + '_Item'
+        out.line(`union ${itemType} = ${query.sources.map(s => s.entity).join(' | ')}`)
+        out.line()
+        out.block(`type ${upperCaseFirst(name)}Output`, () => {
+            out.line(`item: ${itemType}!`)
+            out.line(`rank: Float!`)
+            out.line(`highlight: String!`)
+        })
+        out.line()
+    }
+
+    function generateFtsQuery(name: string, query: FTS_Query): void {
+        let where = query.sources.map(src => {
+            return `where${src.entity}: ${src.entity}WhereInput`
+        })
+        out.line(`${name}(text: String! ${where.join(' ')} limit: Int offset: Int): [${upperCaseFirst(name)}Output!]!`)
     }
 
     function generateDescription(description?: string): void {

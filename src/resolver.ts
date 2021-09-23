@@ -13,9 +13,9 @@ import {
     encodeCursor,
     PageInfo
 } from "./relayConnection"
-import {connectionRequestedFields, requestedFields} from "./requestedFields"
+import {connectionRequestedFields, ftsRequestedFields, requestedFields} from "./requestedFields"
 import {getScalarResolvers} from "./scalars"
-import {ensureArray, lowerCaseFirst, toQueryListField} from "./util"
+import {ensureArray, lowerCaseFirst, toQueryListField, upperCaseFirst} from "./util"
 
 
 export interface ResolverContext {
@@ -58,6 +58,15 @@ export function buildResolvers(model: Model): IResolvers {
                 break
             case 'union':
                 resolvers[name] = {
+                    __resolveType: resolveUnionType
+                }
+                break
+            case 'fts':
+                Query[name] = (source, args, context, info) => {
+                    let fields = ftsRequestedFields(model, name, info)
+                    return new QueryBuilder(context).executeFulltextSearch(name, args, fields)
+                }
+                resolvers[`${upperCaseFirst(name)}_Item`] = {
                     __resolveType: resolveUnionType
                 }
                 break
@@ -171,4 +180,17 @@ async function resolveEntityConnection(
     }
 
     return response
+}
+
+
+async function resolveFtsQuery(
+    queryName: string,
+    args: any,
+    context: ResolverContext,
+    info: GraphQLResolveInfo
+): Promise<any[]> {
+    let fields = ftsRequestedFields(context.model, queryName, info)
+    let sql = new QueryBuilder(context).fulltextSearchSelect(queryName, args, fields)
+    console.log(sql)
+    return []
 }

@@ -1,9 +1,9 @@
 import assert from "assert"
 import type {ClientBase, QueryArrayResult} from "pg"
 import type {Entity, JsonObject, Model} from "./model"
-import {getUnionProps} from "./model.tools"
+import {getEntity, getFtsQuery, getUnionProps} from "./model.tools"
 import {OpenCrudOrderByValue, OrderBy, parseOrderBy} from "./orderBy"
-import type {RequestedFields} from "./requestedFields"
+import type {FtsRequestedFields, RequestedFields} from "./requestedFields"
 import type {ResolverContext} from "./resolver"
 import {
     fromJsonCast,
@@ -12,7 +12,7 @@ import {
     toTransportArrayCast,
     toTransportCast
 } from "./scalars"
-import {ensureArray, toColumn, toFkColumn, toTable, unsupportedCase} from "./util"
+import {ensureArray, snakeCase, toColumn, toFkColumn, toTable, unsupportedCase} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
 
 
@@ -43,10 +43,8 @@ export class QueryBuilder {
         return this.db.escapeIdentifier(name)
     }
 
-    select(entityName: string, args: ListArgs, fields?: RequestedFields, subquery?: ListSubquery): string {
-        let entity = this.model[entityName]
-        assert(entity.kind == 'entity')
-
+    select(entityName: string, args: ListArgs, fields?: RequestedFields, variant?: SelectVariant): string {
+        let entity = getEntity(this.model, entityName)
         let table = toTable(entityName)
         let alias = this.aliases.add(table)
         let join = new FkJoinSet(this.aliases)
@@ -61,24 +59,50 @@ export class QueryBuilder {
             ''
         )
 
-        let whereExp = ''
+        let whereExps: string[] = []
         let orderByExps: string[] = []
+        let columns = new ColumnSet()
         let out = ''
 
         if (fields) {
-            let columns = new ColumnSet()
             this.populateColumns(columns, cursor, fields)
-            let columnExp = columns.render()
-            if (subquery) {
-                columnExp = `jsonb_build_array(${columnExp})`
-            }
-            out += 'SELECT ' + columnExp + '\n'
+        }
+
+        switch(variant?.kind) {
+            case 'fts':
+                out += 'SELECT\n'
+                out += `    '${entityName}' AS isTypeOf`
+                out += ',\n'
+                out += `    ts_rank(${cursor.tsv(variant.queryName)}, phraseto_tsquery('english', ${variant.textParam})) AS rank`
+                out += ',\n'
+                out += `    ts_headline(${cursor.doc(variant.queryName)}, phraseto_tsquery('english', ${variant.textParam})) AS highlight`
+                out += ',\n'
+                out += columns.size() ? `    json_build_array(${columns.render()})` : "    '[]'::json"
+                out += ' AS item\n'
+                break
+            case 'list-subquery':
+                if (columns.size()) {
+                    out += `SELECT json_build_array(${columns.render()}) `
+                }
+                break
+            default:
+                if (columns.size()) {
+                    out += `SELECT ${columns.render()}\n`
+                }
         }
 
         out += `FROM ${this.ident(table)} ${this.ident(alias)}`
 
         if (hasConditions(args.where)) {
-            whereExp = this.generateWhere(cursor, args.where)
+            whereExps.push(this.generateWhere(cursor, args.where))
+        }
+
+        if (variant?.kind == 'list-subquery') {
+            whereExps.push(`${cursor.fk(variant.field)} = ${variant.parent}`)
+        }
+
+        if (variant?.kind == 'fts') {
+            whereExps.push(`phraseto_tsquery('english', ${variant.textParam}) @@ ${cursor.tsv(variant.queryName)}`)
         }
 
         let orderByInput = args.orderBy && ensureArray(args.orderBy)
@@ -91,13 +115,8 @@ export class QueryBuilder {
             out += join.render(name => this.ident(name))
         }
 
-        if (subquery) {
-            let subWhere = `${this.ident(alias)}.${this.ident(toFkColumn(subquery.field))} = ${subquery.parent}`
-            whereExp = whereExp ? `${subWhere} AND (${whereExp})` : subWhere
-        }
-
-        if (whereExp) {
-            out += '\nWHERE ' + whereExp
+        if (whereExps.length) {
+            out += '\nWHERE ' + whereExps.join(' AND ')
         }
 
         if (orderByExps.length > 0) {
@@ -112,7 +131,7 @@ export class QueryBuilder {
             out += '\nOFFSET ' + this.param(args.offset)
         }
 
-        if (subquery) {
+        if (variant?.kind == 'list-subquery') {
             out = out.replace(/\n/g, ' ')
         }
 
@@ -193,6 +212,7 @@ export class QueryBuilder {
                     case 'list-relation':
                         req.index = columns.add(
                             'array(' + this.select(field.propType.entity, req.args, req.children, {
+                                kind: 'list-subquery',
                                 field: field.propType.field,
                                 parent: cursor.native('id')
                             }) + ')'
@@ -220,13 +240,13 @@ export class QueryBuilder {
                             rel.entity,
                             {where: opArg},
                             undefined,
-                            {parent: cursor.native('id'), field: rel.field}
+                            {kind: 'list-subquery', parent: cursor.native('id'), field: rel.field}
                         )
                         let allFrom = this.select(
                             rel.entity,
                             {},
                             undefined,
-                            {parent: cursor.native('id'), field: rel.field}
+                            {kind: 'list-subquery', parent: cursor.native('id'), field: rel.field}
                         )
                         exps.push(`(SELECT count(*) ${conditionedFrom}) = (SELECT count(*) ${allFrom})`)
                     }
@@ -239,7 +259,7 @@ export class QueryBuilder {
                         rel.entity,
                         {where: opArg},
                         undefined,
-                        {parent: cursor.native('id'), field: rel.field}
+                        {kind: 'list-subquery', parent: cursor.native('id'), field: rel.field}
                     ) + ' LIMIT 1)'
                     if (f.op == 'some') {
                         exps.push(q)
@@ -274,7 +294,7 @@ export class QueryBuilder {
                     )
                 }
             })
-            return ors.join(' OR ')
+            return '(' + ors.join(' OR ') + ')'
         } else {
             return exps.join(' AND ')
         }
@@ -425,13 +445,97 @@ export class QueryBuilder {
         // console.log('\n' + sql)
         return this.db.query({text: sql, rowMode: 'array'}, this.params)
     }
+
+    fulltextSearchSelect(queryName: string, args: any, $fields: FtsRequestedFields): string {
+        let query = getFtsQuery(this.model, queryName)
+        let {limit, offset, text} = args
+        let textParam = this.param(text)
+
+        let srcSelects: string[] = []
+        query.sources.forEach(src => {
+            let where = args[`where${src.entity}`]
+            let itemFields = $fields.item?.[src.entity]
+            let sql = this.select(src.entity, {where}, itemFields, {kind: 'fts', textParam, queryName})
+            srcSelects.push(sql)
+        })
+
+        let cols: string[] = []
+        cols.push('isTypeOf')
+        cols.push('rank')
+        if ($fields.highlight) {
+            cols.push('highlight')
+        }
+        if ($fields.item) {
+            cols.push('item')
+        }
+
+        let sql = `SELECT ${cols.join(', ')} FROM (\n\n`
+        sql += srcSelects.join('\n\nUNION ALL\n\n')
+        sql += `\n\n) AS ${this.aliases.add('tsv')}`
+        sql += ` ORDER BY rank DESC`
+        if (limit != null) {
+            sql += ` LIMIT ${this.param(limit)}`
+        }
+        if (offset != null) {
+            sql += ` OFFSET ${this.param(offset)}`
+        }
+        return sql
+    }
+
+    toFulltextSearchResult(rows: any[][], fields: FtsRequestedFields): FtsItem[] {
+        let out: FtsItem[] = new Array(rows.length)
+        for (let i = 0; i < rows.length; i++) {
+            let row = rows[i]
+            let isTypeOf = row[0]
+            let highlight = fields.highlight ? row[2] : undefined
+            let itemIdx = fields.highlight ? 3 : 2
+            let itemFields = fields.item?.[isTypeOf]
+            let item: any
+            if (itemFields) {
+                item = this.mapRow(row[itemIdx], itemFields)
+                item.isTypeOf = isTypeOf
+            } else {
+                item = {isTypeOf}
+            }
+            out[i] = {
+                rank: row[1],
+                highlight,
+                item
+            }
+        }
+        return out
+    }
+
+    async executeFulltextSearch(queryName: string, args: any, $fields: FtsRequestedFields): Promise<FtsItem[]> {
+        let sql = this.fulltextSearchSelect(queryName, args, $fields)
+        let result = await this.query(sql)
+        return this.toFulltextSearchResult(result.rows, $fields)
+    }
+}
+
+
+export interface FtsItem {
+    rank?: number
+    highlight?: string
+    item?: any
+}
+
+
+type SelectVariant = FtsVariant | ListSubquery
+
+
+interface FtsVariant {
+    kind: 'fts'
+    queryName: string
+    textParam: string // builder.param(text)
 }
 
 
 /**
- * (SELECT ... FROM table WHERE table.{toFkColumn(field)} = {parent})
+ * SELECT json_build_array(...fields) FROM ... WHERE {toFkColumn(field)} = {parent}
  */
 interface ListSubquery {
+    kind: 'list-subquery'
     field: string
     parent: string
 }
@@ -503,9 +607,7 @@ class Cursor {
                 object = this.model[prop.type.foreignEntity] as Entity
                 alias = this.join.add(
                     toTable(prop.type.foreignEntity),
-                    this.object.kind == 'entity'
-                        ? this.ident(this.alias) + '.' + this.ident(toFkColumn(propName))
-                        : fromJsonCast('ID', this.prefix, propName)
+                    this.fk(propName)
                 )
                 prefix = ''
                 break
@@ -536,6 +638,22 @@ class Cursor {
         assert(this.object.kind == 'entity')
         return this.ident(this.alias) + '.' + this.ident(toColumn(name))
     }
+
+    fk(propName: string): string {
+        return this.object.kind == 'entity'
+            ? this.ident(this.alias) + '.' + this.ident(toFkColumn(propName))
+            : fromJsonCast('ID', this.prefix, propName)
+    }
+
+    tsv(queryName: string): string {
+        assert(this.object.kind == 'entity')
+        return this.ident(this.alias) + '.' + this.ident(snakeCase(queryName) + '_tsv')
+    }
+
+    doc(queryName: string): string {
+        assert(this.object.kind == 'entity')
+        return this.ident(this.alias) + '.' + this.ident(snakeCase(queryName) + '_doc')
+    }
 }
 
 
@@ -553,6 +671,10 @@ class ColumnSet {
 
     render(): string {
         return Array.from(this.columns.keys()).join(', ')
+    }
+
+    size(): number {
+        return this.columns.size
     }
 }
 

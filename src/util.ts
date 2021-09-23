@@ -4,7 +4,7 @@ import {pluralize, underscore} from "inflected"
 export {pluralize}
 
 
-function snakeCase(name: string): string {
+export function snakeCase(name: string): string {
     return underscore(name)
 }
 
@@ -31,6 +31,15 @@ export function lowerCaseFirst(s: string): string {
 }
 
 
+export function upperCaseFirst(s: string): string {
+    if (s) {
+        return s[0].toUpperCase() + s.slice(1)
+    } else {
+        return s
+    }
+}
+
+
 export function toQueryListField(entityName: string): string {
     return pluralize(lowerCaseFirst(entityName))
 }
@@ -48,6 +57,16 @@ export function toFkColumn(gqlFieldName: string): string {
 
 export function toTable(entityName: string): string {
     return snakeCase(entityName)
+}
+
+
+export function ensureArray<T>(item: T | T[]): T[] {
+    return Array.isArray(item) ? item : [item]
+}
+
+
+export function unsupportedCase(value: string): Error {
+    return new Error(`Unsupported case: ${value}`)
 }
 
 
@@ -76,14 +95,4 @@ export class Output {
     toString(): string {
         return this.out
     }
-}
-
-
-export function ensureArray<T>(item: T | T[]): T[] {
-    return Array.isArray(item) ? item : [item]
-}
-
-
-export function unsupportedCase(value: string): Error {
-    return new Error(`Unsupported case: ${value}`)
 }

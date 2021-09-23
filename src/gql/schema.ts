@@ -18,6 +18,7 @@ import {
 } from "graphql"
 import {DirectiveNode} from "graphql/language/ast"
 import {Model, Prop, PropType} from "../model"
+import {validateUnionTypes} from "../model.tools"
 import {scalars_list} from "../scalars"
 import {weakMemo} from "../util"
 
@@ -98,6 +99,7 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
         let fieldType = f.type
         let nullable = true
         let description = f.description || undefined
+        handleFulltextDirective(model, type, f)
         if (fieldType instanceof GraphQLNonNull) {
             nullable = false
             fieldType = fieldType.ofType
@@ -228,6 +230,46 @@ function addEnum(model: Model, type: GraphQLEnumType): void {
 }
 
 
+function handleFulltextDirective(model: Model, object: GraphQLNamedType, f: GraphQLField<any, any>): void {
+    f.astNode?.directives?.forEach(d => {
+        if (d.name.value != 'fulltext') return
+        if (!isEntityType(object) || !isStringField(f)) {
+            throw new Error(`@fulltext directive can be only applied to String entity fields, but was applied to ${object.name}.${f.name}`)
+        }
+        let queryArgument = d.arguments?.find(arg => arg.name.value == 'query')
+        assert(queryArgument != null)
+        assert(queryArgument.value.kind == 'StringValue')
+        let queryName = queryArgument.value.value
+        let query = model[queryName]
+        if (query == null) {
+            query = model[queryName] = {
+                kind: 'fts',
+                sources: []
+            }
+        }
+        assert(query.kind == 'fts')
+        let src = query.sources.find(s => s.entity == object.name)
+        if (src == null) {
+            query.sources.push({
+                entity: object.name,
+                fields: [f.name]
+            })
+        } else {
+            src.fields.push(f.name)
+        }
+    })
+}
+
+
+function isStringField(f: GraphQLField<any, any>): boolean {
+    let type = f.type
+    if (type instanceof GraphQLNonNull) {
+        type = type.ofType
+    }
+    return type instanceof GraphQLScalarType && type.name == 'String'
+}
+
+
 function unwrapList(type: GraphQLOutputType): DeepList {
     let nulls: boolean[] = []
     while (type instanceof GraphQLList) {
@@ -263,41 +305,4 @@ function wrapWithList(nulls: boolean[], dataType: PropType): PropType {
 
 function unsupportedFieldTypeError(type: string, field: string): Error {
     return new Error(`Property ${type}.${field} has unsupported type`)
-}
-
-
-function validateUnionTypes(model: Model): void {
-    for (let key in model) {
-        let item = model[key]
-        if (item.kind != 'union') continue
-        let properties: Record<string, {objectName: string, type: PropType}> = {}
-        item.variants.forEach(objectName => {
-            let object = model[objectName]
-            assert(object.kind == 'object')
-            for (let propName in object.properties) {
-                let rec = properties[propName]
-                if (rec && !propTypeEquals(rec.type, object.properties[propName].type)) {
-                    throw new Error(
-                        `${rec.objectName} and ${objectName} variants of union ${key} both have property '${propName}', but types of ${rec.objectName}.${propName} and ${objectName}.${propName} are different.`
-                    )
-                } else {
-                    properties[propName] = {objectName, type: object.properties[propName].type}
-                }
-            }
-        })
-    }
-}
-
-
-export function propTypeEquals(a: PropType, b: PropType): boolean {
-    if (a.kind != b.kind) return false
-    if (a.kind == 'list') return propTypeEquals(a.item.type, (b as typeof a).item.type)
-    switch(a.kind) {
-        case 'fk':
-            return a.foreignEntity == (b as typeof a).foreignEntity
-        case 'list-relation':
-            return a.entity == (b as typeof a).entity && a.field == (b as typeof a).field
-        default:
-            return a.name == (b as typeof a).name
-    }
 }

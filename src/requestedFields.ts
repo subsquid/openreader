@@ -8,6 +8,7 @@ import {
     simplifyParsedResolveInfoFragmentWithType
 } from "graphql-parse-resolve-info"
 import {Model, PropType} from "./model"
+import {upperCaseFirst} from "./util"
 
 
 export interface RequestedFields {
@@ -144,6 +145,40 @@ export function connectionRequestedFields(model: Model, entityName: string, info
             requested.edges.node = collectRequestedFields(model, entityName, info.schema, nodeTree)
         }
     }
+    return requested
+}
+
+
+export interface FtsRequestedFields {
+    item?: Record<string, RequestedFields>
+    highlight?: boolean
+    rank?: boolean
+}
+
+
+export function ftsRequestedFields(model: Model, queryName: string, info: GraphQLResolveInfo): FtsRequestedFields {
+    let query = model[queryName]
+    assert(query.kind == 'fts')
+
+    let requested: FtsRequestedFields = {}
+    let tree = getResolveTree(info, upperCaseFirst(queryName) + 'Output')
+
+    requested.rank = hasTreeRequest(tree.fields, 'rank')
+    requested.highlight = hasTreeRequest(tree.fields, 'highlight')
+
+    let itemTree = getTreeRequest(tree.fields, 'item')
+    if (itemTree) {
+        requested.item = {}
+        for (let i = 0; i < query.sources.length; i++) {
+            let entity = query.sources[i].entity
+            let fields = collectRequestedFields(model, entity, info.schema, itemTree)
+            for (let key in fields) {
+                requested.item[entity] = fields
+                break
+            }
+        }
+    }
+
     return requested
 }
 

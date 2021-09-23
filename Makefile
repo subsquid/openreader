@@ -1,3 +1,6 @@
+test:
+	npx mocha -r dotenv/config ./dist/test/*.test.js
+
 up:
 	@docker-compose up -d
 
@@ -6,9 +9,6 @@ down:
 
 logs:
 	@docker logs "$$(basename $$(pwd))_db_1" -f
-
-test:
-	npx mocha -r dotenv/config ./dist/test/*.test.js
 
 build: clean
 	@npx tsc
