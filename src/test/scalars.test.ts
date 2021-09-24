@@ -15,6 +15,8 @@ describe('scalars', function() {
         `insert into scalar (id, "date_time", deep) values ('10', '2021-09-24T15:43:13.400Z', '{"dateTime": "2021-09-24T00:00:00.120Z"}'::jsonb)`,
         `insert into scalar (id, "date_time", deep) values ('11', '2021-09-24T00:00:00.000Z', '{"dateTime": "2021-09-24T00:00:00Z"}'::jsonb)`,
         `insert into scalar (id, "date_time", deep) values ('12', '2021-09-24T01:00:00.001Z', '{"dateTime": "2021-09-24T00:00:00.1Z"}'::jsonb)`,
+        `insert into scalar (id, "bytes", deep) values ('13', decode('aa', 'hex'), '{"bytes": "0xaa"}'::jsonb)`,
+        `insert into scalar (id, "bytes", deep) values ('14', decode('bb', 'hex'), '{"bytes": "0xCCDD"}'::jsonb)`,
     ])
 
     const client = useServer(`
@@ -24,12 +26,14 @@ describe('scalars', function() {
             string: String
             bigint: BigInt
             dateTime: DateTime
+            bytes: Bytes
             deep: DeepScalar
         }
         
         type DeepScalar {
             bigint: BigInt
             dateTime: DateTime
+            bytes: Bytes
         }
     `)
 
@@ -215,6 +219,37 @@ describe('scalars', function() {
                     {id: '12'},
                     {id: '10'}
                 ]
+            })
+        })
+    })
+
+    describe('Bytes', function () {
+        it('outputs correctly', function () {
+            return client.test(`
+                query {
+                    scalars(where: {id_in: ["13", "14"]} orderBy: id_ASC) {
+                        id
+                        bytes
+                        deep { bytes }
+                    }
+                }
+            `, {
+                scalars: [
+                    {id: '13', bytes: '0xaa', deep: {bytes: '0xaa'}},
+                    {id: '14', bytes: '0xbb', deep: {bytes: '0xccdd'}},
+                ]
+            })
+        })
+
+        it('supports where conditions', function () {
+            return client.test(`
+                query {
+                    eq: scalars(where: {bytes: "0xaa"} orderBy: id_ASC) { id }
+                    deep_eq: scalars(where: {deep: {bytes: "0xccdd"}} orderBy: id_ASC) { id }
+                }
+            `, {
+                eq: [{id: '13'}],
+                deep_eq: [{id: '14'}]
             })
         })
     })

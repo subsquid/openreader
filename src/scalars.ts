@@ -98,6 +98,36 @@ export const scalars: Record<string, Scalar> = {
         toStringArrayCast(exp) {
             return exp
         }
+    },
+    Bytes: {
+        gql: new GraphQLScalarType({
+            name: 'Bytes',
+            description: 'Binary data encoded as a hex string always prefixed with 0x',
+            serialize(value: string) {
+                if (!isBytesString(value)) throw invalidFormat('Bytes', value)
+                return value.toLowerCase()
+            },
+            parseValue(value: string) {
+                return parseBytes(value)
+            },
+            parseLiteral(ast) {
+                switch(ast.kind) {
+                    case "StringValue":
+                        return parseBytes(ast.value)
+                    default:
+                        return null
+                }
+            }
+        }),
+        fromStringCast(exp) {
+            return `decode(substr(${exp}, 3), 'hex')`
+        },
+        toStringCast(exp) {
+            return `'0x' || encode(${exp}, 'hex')`
+        },
+        toStringArrayCast(exp) {
+            return `array(select '0x' || encode(i, 'hex') from unnest(${exp}) as i)`
+        }
     }
 }
 
@@ -116,11 +146,22 @@ function isIsoDateTimeString(s: string): boolean {
 }
 
 
-function parseDateTime(value: string): string {
-    if (!isIsoDateTimeString(value)) throw invalidFormat('DateTime', value)
-    let timestamp = Date.parse(value)
-    if (isNaN(timestamp)) throw invalidFormat('DateTime', value)
-    return value
+function parseDateTime(s: string): string {
+    if (!isIsoDateTimeString(s)) throw invalidFormat('DateTime', s)
+    let timestamp = Date.parse(s)
+    if (isNaN(timestamp)) throw invalidFormat('DateTime', s)
+    return s
+}
+
+
+function isBytesString(s: string): boolean {
+    return s.length % 2 == 0 && /^0x[a-f0-9]+$/i.test(s)
+}
+
+
+function parseBytes(s: string): string {
+    if (!isBytesString(s)) throw invalidFormat('Bytes', s)
+    return s.toLowerCase()
 }
 
 
