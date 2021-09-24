@@ -32,7 +32,7 @@ export const scalars: Record<string, Scalar> = {
                 return ''+value
             },
             parseValue(value: string) {
-                if (!isBigInt(value)) throw new Error('Not a BigInt: ' + value)
+                if (!isBigInt(value)) throw invalidFormat('BigInt', value)
                 return value
             },
             parseLiteral(ast) {
@@ -45,7 +45,7 @@ export const scalars: Record<string, Scalar> = {
                                 return ast.value
                             }
                         } else {
-                            throw new Error('Not a BigInt: ' + ast.value)
+                            throw invalidFormat('BigInt', ast.value)
                         }
                     case "IntValue":
                         return ''+ast.value
@@ -63,12 +63,69 @@ export const scalars: Record<string, Scalar> = {
         toStringArrayCast(exp) {
             return `(${exp})::text[]`
         }
+    },
+    DateTime: {
+        gql: new GraphQLScalarType({
+            name: 'DateTime',
+            description:
+                'A date-time string in simplified extended ISO 8601 format (YYYY-MM-DDTHH:mm:ss.sssZ)',
+            serialize(value: Date | string) {
+                if (value instanceof Date) {
+                    return value.toISOString()
+                } else {
+                    if (!isIsoDateTimeString(value)) throw invalidFormat('DateTime', value)
+                    return value
+                }
+            },
+            parseValue(value: string) {
+                return parseDateTime(value)
+            },
+            parseLiteral(ast) {
+                switch(ast.kind) {
+                    case "StringValue":
+                        return parseDateTime(ast.value)
+                    default:
+                        return null
+                }
+            }
+        }),
+        fromStringCast(exp) {
+            return `(${exp})::timestamptz`
+        },
+        toStringCast(exp) {
+            return exp
+        },
+        toStringArrayCast(exp) {
+            return exp
+        }
     }
 }
 
 
 function isBigInt(s: string): boolean {
     return /^[+\-]?\d+$/.test(s)
+}
+
+
+// credit - https://github.com/Urigo/graphql-scalars/blob/91b4ea8df891be8af7904cf84751930cc0c6613d/src/scalars/iso-date/validator.ts#L122
+const RFC_3339_REGEX = /^(\d{4}-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]|60))(\.\d{1,})?([Z])$/
+
+
+function isIsoDateTimeString(s: string): boolean {
+    return RFC_3339_REGEX.test(s)
+}
+
+
+function parseDateTime(value: string): string {
+    if (!isIsoDateTimeString(value)) throw invalidFormat('DateTime', value)
+    let timestamp = Date.parse(value)
+    if (isNaN(timestamp)) throw invalidFormat('DateTime', value)
+    return value
+}
+
+
+function invalidFormat(type: string, value: string): Error {
+    return new TypeError(`Not a ${type}: ${value}`)
 }
 
 
