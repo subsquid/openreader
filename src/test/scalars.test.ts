@@ -98,13 +98,26 @@ describe('scalars', function() {
                     scalars(where: {id_in: ["3", "4", "5"]} orderBy: id_ASC) {
                         id
                         bigint
+                        deep { bigint }
                     }
                 }
             `, {
                 scalars: [
-                    {id: '3', bigint: '1000000000000000000000000000000000000'},
-                    {id: '4', bigint: '2000000000000000000000000000000000000'},
-                    {id: '5', bigint: '5'}
+                    {
+                        id: '3',
+                        bigint: '1000000000000000000000000000000000000',
+                        deep: {bigint: '1000000000000000000000000000000000000'}
+                    },
+                    {
+                        id: '4',
+                        bigint: '2000000000000000000000000000000000000',
+                        deep: {bigint: '2000000000000000000000000000000000000'}
+                    },
+                    {
+                        id: '5',
+                        bigint: '5',
+                        deep: {bigint: '5'}
+                    }
                 ]
             })
         })
@@ -133,7 +146,7 @@ describe('scalars', function() {
             })
         })
 
-        it('deep sort', function () {
+        it('json sort', function () {
             return client.test(`
                 query {
                     scalars(orderBy: deep_bigint_ASC where: {id_in: ["3", "4", "5"]}) {
@@ -157,13 +170,14 @@ describe('scalars', function() {
                     scalars(where: {id_in: ["10", "11", "12"]} orderBy: id_ASC) {
                         id
                         dateTime
+                        deep { dateTime }
                     }
                 }
             `, {
                 scalars: [
-                    {id: '10', dateTime: '2021-09-24T15:43:13.400Z'},
-                    {id: '11', dateTime: '2021-09-24T00:00:00.000Z'},
-                    {id: '12', dateTime: '2021-09-24T01:00:00.001Z'}
+                    {id: '10', dateTime: '2021-09-24T15:43:13.400Z', deep: {dateTime: '2021-09-24T00:00:00.120Z'}},
+                    {id: '11', dateTime: '2021-09-24T00:00:00.000Z', deep: {dateTime: '2021-09-24T00:00:00Z'}},
+                    {id: '12', dateTime: '2021-09-24T01:00:00.001Z', deep: {dateTime: '2021-09-24T00:00:00.1Z'}}
                 ]
             })
         })
@@ -188,7 +202,7 @@ describe('scalars', function() {
             })
         })
 
-        it('deep sort', function () {
+        it('json sort', function () {
             return client.test(`
                 query {
                     scalars(orderBy: deep_dateTime_ASC where: {id_in: ["10", "11", "12"]}) {
