@@ -1,3 +1,4 @@
+import assert from "assert"
 import {pluralize, underscore} from "inflected"
 
 
@@ -67,6 +68,13 @@ export function ensureArray<T>(item: T | T[]): T[] {
 
 export function unsupportedCase(value: string): Error {
     return new Error(`Unsupported case: ${value}`)
+}
+
+
+export function toInt(val: number | string): number {
+    let i = parseInt(val as string)
+    assert(!isNaN(i) && isFinite(i))
+    return i
 }
 
 

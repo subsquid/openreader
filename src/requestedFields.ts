@@ -8,7 +8,7 @@ import {
     simplifyParsedResolveInfoFragmentWithType
 } from "graphql-parse-resolve-info"
 import {Model, PropType} from "./model"
-import {upperCaseFirst} from "./util"
+import {pluralize, upperCaseFirst} from "./util"
 
 
 export interface RequestedFields {
@@ -132,7 +132,7 @@ export interface ConnectionRequestedFields {
 
 export function connectionRequestedFields(model: Model, entityName: string, info: GraphQLResolveInfo): ConnectionRequestedFields {
     let requested: ConnectionRequestedFields = {}
-    let tree = getResolveTree(info, entityName + 'Connection')
+    let tree = getResolveTree(info, pluralize(entityName) + 'Connection')
     requested.totalCount = hasTreeRequest(tree.fields, 'totalCount')
     requested.pageInfo = hasTreeRequest(tree.fields, 'pageInfo')
     let edgesTree = getTreeRequest(tree.fields, 'edges')

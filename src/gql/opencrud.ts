@@ -53,7 +53,7 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 out.line(`${lowerCaseFirst(name)}ById(id: ID!): ${name}`)
                 out.line(`${lowerCaseFirst(name)}ByUniqueInput(where: ${name}WhereUniqueInput!): ${name} @deprecated(reason: "Use \`${lowerCaseFirst(name)}ById\`")`)
                 out.line(`${lowerCaseFirst(pluralize(name))}${manyArguments(name)}: [${name}!]!`)
-                out.line(`${lowerCaseFirst(pluralize(name))}Connection${connectionArguments(name)}: ${name}Connection!`)
+                out.line(`${lowerCaseFirst(pluralize(name))}Connection${connectionArguments(name)}: ${pluralize(name)}Connection!`)
             }
             if (item.kind == 'fts') {
                 generateFtsQuery(name, item)
@@ -270,7 +270,7 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
             out.line(`cursor: String!`)
         })
         out.line()
-        out.block(`type ${name}Connection`, () => {
+        out.block(`type ${pluralize(name)}Connection`, () => {
             out.line(`edges: [${name}Edge!]!`)
             out.line(`pageInfo: PageInfo!`)
             out.line(`totalCount: Int!`)

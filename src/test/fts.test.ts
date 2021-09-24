@@ -27,8 +27,8 @@ describe('full text search', function () {
         `insert into foo (id, foo, comment) values ('1', 1, 'Some man greeted me with hello')`,
         `insert into foo (id, foo, comment) values ('2', 2, 'Deeply buried lorem ipsum dolor sit amet, then comes baz')`,
         `insert into foo (id, foo, comment) values ('3', 3, 'Lorem ipsum dolor sit amet')`,
-        `insert into bar (id, bar, description) values ('1', 'every bar is followed by baz', 'Absolutely!')`,
-        `insert into bar (id, bar, description) values ('2', 'qux', 'Baz should be here!')`,
+        `insert into bar (id, bar, description) values ('1', 'every bar is followed by baz. Baz!', 'Absolutely!')`,
+        `insert into bar (id, bar, description) values ('2', 'qux', 'Baz should be here! Baz! Baz! Baz!')`,
     ])
 
     const client = useServer(`
@@ -45,7 +45,7 @@ describe('full text search', function () {
         }
     `)
 
-    it('finds "hello" across entities in Foo.comment', function () {
+    it('finds "hello" across entities in Foo.comment and highlights it', function () {
         return client.test(`
             query {
                 search(text: "hello") {
@@ -63,7 +63,7 @@ describe('full text search', function () {
         })
     })
 
-    it('finds "absolute" across entities in Bar.description', function () {
+    it('finds "absolute" across entities in Bar.description and highlights it', function () {
         return client.test(`
             query {
                 search(text: "absolute") {
@@ -75,9 +75,28 @@ describe('full text search', function () {
             }
         `, {
             search: [{
-                item: {id: '1', bar: 'every bar is followed by baz'},
-                highlight: 'every bar is followed by baz\n\n<b>Absolutely</b>!'
+                item: {id: '1', bar: 'every bar is followed by baz. Baz!'},
+                highlight: 'every bar is followed by baz. Baz!\n\n<b>Absolutely</b>!'
             }]
+        })
+    })
+
+    it('finds and arranges "Baz"', function () {
+        return client.test(`
+            query {
+                search(text: "baz") {
+                    item {
+                        ... on Foo { id foo }
+                        ... on Bar { id bar }
+                    }
+                }
+            }
+        `, {
+            search: [
+                {item: {id: '2', bar: 'qux'}},
+                {item: {id: '1', bar: 'every bar is followed by baz. Baz!'}},
+                {item: {id: '2', foo: 2}},
+            ]
         })
     })
 })

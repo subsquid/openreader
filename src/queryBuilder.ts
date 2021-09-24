@@ -12,7 +12,7 @@ import {
     toTransportArrayCast,
     toTransportCast
 } from "./scalars"
-import {ensureArray, snakeCase, toColumn, toFkColumn, toTable, unsupportedCase} from "./util"
+import {ensureArray, snakeCase, toColumn, toFkColumn, toInt, toTable, unsupportedCase} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
 
 
@@ -184,6 +184,7 @@ export class QueryBuilder {
                         req.index = columns.add(cursor.transport(fieldName))
                         break
                     case 'object':
+                        req.index = columns.add(cursor.field(fieldName) + ' IS NULL')
                         this.populateColumns(
                             columns,
                             cursor.child(fieldName),
@@ -393,9 +394,13 @@ export class QueryBuilder {
                     case 'list':
                         rec[req.alias] = row[req.index]
                         break
-                    case 'object':
-                        rec[req.alias] = this.mapRow(row, req.children) // FIXME: nulls
+                    case 'object': {
+                        let isNull = row[req.index]
+                        if (!isNull) {
+                            rec[req.alias] = this.mapRow(row, req.children)
+                        }
                         break
+                    }
                     case 'union': {
                         let isTypeOf = row[req.index]
                         if (isTypeOf != null) {
@@ -432,13 +437,13 @@ export class QueryBuilder {
     async executeSelectCount(entityName: string, where?: any): Promise<number> {
         let sql = `SELECT count(*) ${this.select(entityName, {where})}`
         let result = await this.query(sql)
-        return result.rows[0][0]
+        return toInt(result.rows[0][0])
     }
 
     async executeListCount(entityName: string, args: ListArgs): Promise<number> {
         let sql = `SELECT count(*) FROM (SELECT true ${this.select(entityName, args)}) AS ${this.aliases.add('list')}`
         let result = await this.query(sql)
-        return result.rows[0][0]
+        return toInt(result.rows[0][0])
     }
 
     private query(sql: string): Promise<QueryArrayResult> {
@@ -626,7 +631,7 @@ class Cursor {
         )
     }
 
-    private field(name: string): string {
+    field(name: string): string {
         if (this.object.kind == 'entity') {
             return this.column(name)
         } else {
