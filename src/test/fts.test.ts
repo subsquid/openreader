@@ -99,4 +99,22 @@ describe('full text search', function () {
             ]
         })
     })
+
+    it('supports where conditions', function () {
+        return client.test(`
+            query {
+                search(text: "baz" whereBar: {bar: "qux"}) {
+                    item {
+                        ... on Foo { id foo }
+                        ... on Bar { id bar }
+                    }
+                }
+            }
+        `, {
+            search: [
+                {item: {id: '2', bar: 'qux'}},
+                {item: {id: '2', foo: 2}}
+            ]
+        })
+    })
 })
