@@ -287,12 +287,15 @@ export class QueryBuilder {
             })
         }
         if (OR) {
-            let ors = [`(${exps.join(' AND ')})`]
+            let ors: string[] = []
+            if (exps.length) {
+                ors.push('(' + exps.join(' AND ') + ')')
+            }
             // We are getting objects here, although we have array in schema
             ensureArray(OR).forEach((orWhere: any) => {
                 if (hasConditions(orWhere)) {
                     ors.push(
-                        `(${this.generateWhere(cursor, orWhere)})`
+                        '(' + this.generateWhere(cursor, orWhere) + ')'
                     )
                 }
             })
