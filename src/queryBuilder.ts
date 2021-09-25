@@ -8,6 +8,7 @@ import type {ResolverContext} from "./resolver"
 import {
     fromJsonCast,
     fromJsonToTransportCast,
+    fromTransportArrayCast,
     fromTransportCast,
     toTransportArrayCast,
     toTransportCast
@@ -349,6 +350,26 @@ export class QueryBuilder {
                 }
                 break
             }
+            case 'list': {
+                let item = propType.item.type
+                assert(item.kind == 'scalar' || item.kind == 'enum')
+                let param = fromTransportArrayCast(item.name, this.param(arg))
+                let lhs = cursor.native(field)
+                switch(op) {
+                    case 'containsAll':
+                        exps.push(`${lhs} @> ${param}`)
+                        break
+                    case 'containsAny':
+                        exps.push(`${lhs} && ${param}`)
+                        break
+                    case 'containsNone':
+                        exps.push(`NOT (${lhs} && ${param})`)
+                        break
+                    default:
+                        throw unsupportedCase(op)
+                }
+                break
+            }
             case 'object':
             case 'union': {
                 assert(op == '-')
@@ -583,6 +604,11 @@ class Cursor {
 
     native(propName: string): string {
         let prop = this.object.properties[propName]
+        if (prop.type.kind == 'list') {
+            let item = prop.type.item.type
+            assert(item.kind == 'scalar' || item.kind == 'enum')
+            return this.column(propName)
+        }
         assert(prop.type.kind == 'scalar' || prop.type.kind == 'enum')
         if (this.object.kind == 'object') {
             return fromJsonCast(prop.type.name, this.prefix, propName)

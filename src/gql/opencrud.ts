@@ -143,6 +143,14 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
                 case 'enum':
                     generateScalarFilters(key, prop.type.name)
                     break
+                case 'list':
+                    if (prop.type.item.type.kind == 'scalar' || prop.type.item.type.kind == 'enum') {
+                        let item = prop.type.item.type.name
+                        out.line(`${key}_containsAll: [${item}!]`)
+                        out.line(`${key}_containsAny: [${item}!]`)
+                        out.line(`${key}_containsNone: [${item}!]`)
+                    }
+                    break
                 case 'object':
                     if (hasFilters(getObject(prop.type.name))) {
                         out.line(`${key}: ${prop.type.name}WhereInput`)

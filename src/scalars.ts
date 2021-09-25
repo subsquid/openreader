@@ -9,6 +9,9 @@
  *
  * Because our canonical representations are used in SQL query parameters and results,
  * database must support 2 way coercions between those and underlying database types.
+ *
+ * One exception is DateTime. We receive it from database in native format (getting Date objects from driver),
+ * then convert it to string with gql resolver.
  */
 
 import {IResolvers} from "@graphql-tools/utils"
@@ -19,6 +22,7 @@ export interface Scalar {
     gql: GraphQLScalarType
     fromStringCast: (sqlExp: string) => string
     toStringCast: (sqlExp: string) => string
+    fromStringArrayCast: (sqlExp: string) => string
     toStringArrayCast: (sqlExp: string) => string
 }
 
@@ -60,6 +64,9 @@ export const scalars: Record<string, Scalar> = {
         toStringCast(exp) {
             return `(${exp})::text`
         },
+        fromStringArrayCast(exp) {
+            return `(${exp})::numeric[]`
+        },
         toStringArrayCast(exp) {
             return `(${exp})::text[]`
         }
@@ -95,6 +102,9 @@ export const scalars: Record<string, Scalar> = {
         toStringCast(exp) {
             return exp
         },
+        fromStringArrayCast(exp) {
+            return `(${exp})::timestamptz[]`
+        },
         toStringArrayCast(exp) {
             return exp
         }
@@ -124,6 +134,9 @@ export const scalars: Record<string, Scalar> = {
         },
         toStringCast(exp) {
             return `'0x' || encode(${exp}, 'hex')`
+        },
+        fromStringArrayCast(exp) {
+            return `array(select decode(substr(i, 3), 'hex') from unnest((${exp})::text[]) as i)`
         },
         toStringArrayCast(exp) {
             return `array(select '0x' || encode(i, 'hex') from unnest(${exp}) as i)`
@@ -206,6 +219,16 @@ export function toTransportArrayCast(scalarType: string, sqlExp: string): string
     let s = scalars[scalarType]
     if (s) {
         return s.toStringArrayCast(sqlExp)
+    } else {
+        return sqlExp
+    }
+}
+
+
+export function fromTransportArrayCast(scalarType: string, sqlExp: string): string {
+    let s = scalars[scalarType]
+    if (s) {
+        return s.fromStringArrayCast(sqlExp)
     } else {
         return sqlExp
     }

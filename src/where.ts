@@ -10,6 +10,9 @@ export type WhereOp =
     'contains' | 'not_contains' |
     'startsWith' | 'not_startsWith' |
     'endsWith' | 'not_endsWith' |
+    'containsAll' |
+    'containsAny' |
+    'containsNone' |
     'some' |
     'every' |
     'none'
@@ -30,6 +33,9 @@ const ENDINGS = [
     'not_startsWith',
     'endsWith',
     'not_endsWith',
+    'containsAll',
+    'containsAny',
+    'containsNone',
     'some',
     'every',
     'none'
