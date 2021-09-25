@@ -120,4 +120,16 @@ describe('AND, OR on entity filters', function () {
             ]
         })
     })
+
+    it('handles empty wheres', function () {
+        return client.test(`
+            query {
+                items(where: { a_eq: 4, AND: { OR: {}, AND: {} }, OR: { OR: {AND: {} } } } orderBy: id_ASC) { id }
+            }
+        `, {
+            items: [
+                {id: '4'}
+            ]
+        })
+    })
 })
