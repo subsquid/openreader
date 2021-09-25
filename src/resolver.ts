@@ -181,16 +181,3 @@ async function resolveEntityConnection(
 
     return response
 }
-
-
-async function resolveFtsQuery(
-    queryName: string,
-    args: any,
-    context: ResolverContext,
-    info: GraphQLResolveInfo
-): Promise<any[]> {
-    let fields = ftsRequestedFields(context.model, queryName, info)
-    let sql = new QueryBuilder(context).fulltextSearchSelect(queryName, args, fields)
-    console.log(sql)
-    return []
-}
