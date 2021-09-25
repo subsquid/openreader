@@ -34,6 +34,43 @@ export function buildUnionProps(model: Model, unionName: string): JsonObject {
 }
 
 
+export function validateModel(model: Model) { // TODO: check all invariants we assume
+    validateNames(model)
+    validateUnionTypes(model)
+}
+
+
+const TYPE_NAME_REGEX = /^[A-Z][a-zA-Z0-9]*$/
+const PROP_NAME_REGEX = /^[a-z][a-zA-Z0-9]*$/
+
+
+export function validateNames(model: Model) {
+    for (let name in model) {
+        let item = model[name]
+        if (item.kind == 'fts') {
+            if (!PROP_NAME_REGEX.test(name)) {
+                throw new Error(`Invalid fulltext search name: ${name}. It must match ${PROP_NAME_REGEX}.`)
+            }
+        } else {
+            if (!TYPE_NAME_REGEX.test(name)) {
+                throw new Error(`Invalid ${item.kind} name: ${name}. It must match ${TYPE_NAME_REGEX}`)
+            }
+        }
+        switch(item.kind) {
+            case 'entity':
+            case 'object':
+            case 'interface':
+                for (let prop in item.properties) {
+                    if (!PROP_NAME_REGEX.test(prop)) {
+                        throw new Error(`Type ${name} has a property with invalid name: ${prop}. It must match ${PROP_NAME_REGEX}.`)
+                    }
+                }
+                break
+        }
+    }
+}
+
+
 export function validateUnionTypes(model: Model): void {
     for (let key in model) {
         let item = model[key]

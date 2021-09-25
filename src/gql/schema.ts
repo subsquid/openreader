@@ -18,7 +18,7 @@ import {
 } from "graphql"
 import {DirectiveNode} from "graphql/language/ast"
 import {Model, Prop, PropType} from "../model"
-import {validateUnionTypes} from "../model.tools"
+import {validateModel} from "../model.tools"
 import {scalars_list} from "../scalars"
 import {weakMemo} from "../util"
 
@@ -50,7 +50,7 @@ export function buildModel(schema: GraphQLSchema): Model {
             addEntityOrJsonObjectOrInterface(model, type as GraphQLObjectType)
         }
     }
-    validateUnionTypes(model)
+    validateModel(model)
     return model
 }
 
