@@ -4,7 +4,7 @@ import * as fs from "fs"
 import {parse, Source, validateSchema} from "graphql"
 import {Pool, PoolConfig} from "pg"
 import {buildSchema} from "./gql/schema"
-import {createServer} from "./server"
+import {Server} from "./server"
 
 
 function main() {
@@ -31,15 +31,9 @@ function main() {
     }
 
     let db = new Pool(readDbConfig())
-
-    let server = createServer({
-        schema,
-        db
-    })
-
     let port = process.env.GRAPHQL_SERVER_PORT || 3000
 
-    server.listen(port).then(
+    new Server({schema, db}).listen(port).then(
         () => {
             console.log('OpenReader is listening on port ' + port)
         },

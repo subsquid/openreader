@@ -10,19 +10,6 @@ export function snakeCase(name: string): string {
 }
 
 
-export function weakMemo<T extends object, R>(f: (val: T) => R): (val: T) => R {
-    let cache = new WeakMap<T, R>()
-    return function(val: T): R {
-        let r = cache.get(val)
-        if (r === undefined) {
-            r = f(val)
-            cache.set(val, r)
-        }
-        return r
-    }
-}
-
-
 export function lowerCaseFirst(s: string): string {
     if (s) {
         return s[0].toLowerCase() + s.slice(1)

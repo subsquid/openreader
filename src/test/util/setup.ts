@@ -1,8 +1,8 @@
-import {gql} from "apollo-server"
+import {gql} from "apollo-server-core"
 import {Client as PgClient, ClientBase, Pool} from "pg"
 import {buildSchema} from "../../gql/schema"
 import {readDbConfig} from "../../main"
-import {createServer} from "../../server"
+import {ListeningServer, Server} from "../../server"
 import {Client} from "./client"
 
 
@@ -48,17 +48,15 @@ export function useDatabase(sql: string[]): void {
 export function useServer(schema: string): Client {
     let client = new Client('not defined')
     let db = new Pool(db_config)
-    let server = createServer({
-        schema: buildSchema(gql(schema)),
-        db,
-    })
+    let info: ListeningServer | undefined
     before(async () => {
-        let info = await server.listen(0)
+        info = await new Server({
+            db,
+            schema: buildSchema(gql(schema))
+        }).listen(0)
         client.endpoint = `http://localhost:${info.port}/graphql`
     })
+    after(() => info?.stop())
     after(() => db.end())
-    after(async () => {
-        await server.stop()
-    })
     return client
 }

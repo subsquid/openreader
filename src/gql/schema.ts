@@ -1,4 +1,4 @@
-import {gql} from "apollo-server"
+import {gql} from "apollo-server-core"
 import assert from "assert"
 import {
     buildASTSchema,
@@ -20,7 +20,6 @@ import {DirectiveNode} from "graphql/language/ast"
 import {Model, Prop, PropType} from "../model"
 import {validateModel} from "../model.tools"
 import {scalars_list} from "../scalars"
-import {weakMemo} from "../util"
 
 
 const baseSchema = buildASTSchema(gql(`
@@ -36,9 +35,6 @@ const baseSchema = buildASTSchema(gql(`
 export function buildSchema(doc: DocumentNode): GraphQLSchema {
     return extendSchema(baseSchema, doc)
 }
-
-
-export const getModel = weakMemo(buildModel)
 
 
 export function buildModel(schema: GraphQLSchema): Model {

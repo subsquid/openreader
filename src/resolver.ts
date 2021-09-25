@@ -1,5 +1,5 @@
 import type {IFieldResolver, IResolvers} from "@graphql-tools/utils"
-import {UserInputError} from "apollo-server"
+import {UserInputError} from "apollo-server-core"
 import assert from "assert"
 import type {GraphQLResolveInfo} from "graphql"
 import type {ClientBase} from "pg"

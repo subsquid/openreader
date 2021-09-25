@@ -1,16 +1,14 @@
-import {gql} from "apollo-server"
+import {gql} from "apollo-server-core"
 import assert from "assert"
-import {DocumentNode, GraphQLEnumType, GraphQLSchema, print} from "graphql"
-import {Entity, Enum, FTS_Query, Interface, JsonObject, Prop, Union} from "../model"
+import {DocumentNode, print} from "graphql"
+import {Entity, Enum, FTS_Query, Interface, JsonObject, Model, Prop, Union} from "../model"
 import {getOrderByMapping} from "../orderBy"
 import {scalars_list} from "../scalars"
 import {lowerCaseFirst, Output, pluralize, upperCaseFirst} from "../util"
-import {getModel} from "./schema"
 
 
-export function generateOpenCrudQueries(schema: GraphQLSchema): string {
+export function generateOpenCrudQueries(model: Model): string {
     let out = new Output()
-    let model = getModel(schema)
 
     generatePageInfoType()
 
@@ -241,7 +239,7 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
             out.line(`${fieldName}_not_endsWith: ${graphqlType}`)
         }
 
-        if (schema.getType(graphqlType) instanceof GraphQLEnumType) {
+        if (model[graphqlType]?.kind == 'enum') {
             out.line(`${fieldName}_in: [${graphqlType}!]`)
             out.line(`${fieldName}_not_in: [${graphqlType}!]`)
         }
@@ -318,8 +316,8 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
 }
 
 
-export function buildServerSchema(schema: GraphQLSchema): DocumentNode {
+export function buildServerSchema(model: Model): DocumentNode {
     let scalars = scalars_list.map(name => 'scalar ' + name).join('\n')
-    let queries = generateOpenCrudQueries(schema)
+    let queries = generateOpenCrudQueries(model)
     return gql(scalars  + '\n\n' + queries)
 }
