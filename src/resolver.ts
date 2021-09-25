@@ -38,13 +38,13 @@ export function buildResolvers(model: Model): IResolvers {
                 }
                 Query[`${lowerCaseFirst(name)}ById`] = async (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
-                    let result = await new QueryBuilder(context).executeSelect(name, {where: {id: args.id}}, fields)
+                    let result = await new QueryBuilder(context).executeSelect(name, {where: {id_eq: args.id}}, fields)
                     assert(result.length < 2)
                     return result[0]
                 }
                 Query[`${lowerCaseFirst(name)}ByUniqueInput`] = async (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
-                    let result = await new QueryBuilder(context).executeSelect(name, args, fields)
+                    let result = await new QueryBuilder(context).executeSelect(name, {where: {id_eq: args.where.id}}, fields)
                     assert(result.length < 2)
                     return result[0]
                 }

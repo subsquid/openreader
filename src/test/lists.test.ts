@@ -76,7 +76,7 @@ describe('lists', function () {
         it('outputs correctly', function () {
             return client.test(`
                 query {
-                    lists(where: {id: "7"}) {
+                    lists(where: {id_eq: "7"}) {
                         datetimeArray
                     }
                 }
@@ -95,7 +95,7 @@ describe('lists', function () {
         it('outputs correctly', function () {
             return client.test(`
                 query {
-                    lists(where: {id: "8"}) {
+                    lists(where: {id_eq: "8"}) {
                         bytesArray
                     }
                 }
@@ -114,7 +114,7 @@ describe('lists', function () {
         it('outputs list of list of integers', function () {
             return client.test(`
                 query {
-                    lists(where: {id: "5"}) {
+                    lists(where: {id_eq: "5"}) {
                         listOfListOfInt
                     }
                 }
@@ -128,7 +128,7 @@ describe('lists', function () {
         it('outputs list of json objects', function () {
             return client.test(`
                 query {
-                    lists(where: {id: "6"}) {
+                    lists(where: {id_eq: "6"}) {
                         listOfJsonObjects {
                             foo
                         }

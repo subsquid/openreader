@@ -189,8 +189,8 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
     function generateUnionWhereInput(name: string, union: Union): void {
         out.block(`input ${name}WhereInput`, () => {
             // TODO: unify and use enum
-            out.line('isTypeOf: String')
-            out.line('isTypeOf_not: String')
+            out.line('isTypeOf_eq: String')
+            out.line('isTypeOf_not_eq: String')
             out.line('isTypeOf_in: [String!]')
             out.line('isTypeOf_not_in: [String!]')
 
@@ -205,8 +205,8 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
     }
 
     function generateScalarFilters(fieldName: string, graphqlType: string): void {
-        out.line(`${fieldName}: ${graphqlType}`)
-        out.line(`${fieldName}_not: ${graphqlType}`)
+        out.line(`${fieldName}_eq: ${graphqlType}`)
+        out.line(`${fieldName}_not_eq: ${graphqlType}`)
 
         switch(graphqlType) {
             case 'ID':
@@ -227,10 +227,10 @@ export function generateOpenCrudQueries(schema: GraphQLSchema): string {
         if (graphqlType == 'String' || graphqlType == 'ID') {
             out.line(`${fieldName}_contains: ${graphqlType}`)
             out.line(`${fieldName}_not_contains: ${graphqlType}`)
-            out.line(`${fieldName}_starts_with: ${graphqlType}`)
-            out.line(`${fieldName}_not_starts_with: ${graphqlType}`)
-            out.line(`${fieldName}_ends_with: ${graphqlType}`)
-            out.line(`${fieldName}_not_ends_with: ${graphqlType}`)
+            out.line(`${fieldName}_startsWith: ${graphqlType}`)
+            out.line(`${fieldName}_not_startsWith: ${graphqlType}`)
+            out.line(`${fieldName}_endsWith: ${graphqlType}`)
+            out.line(`${fieldName}_not_endsWith: ${graphqlType}`)
         }
 
         if (schema.getType(graphqlType) instanceof GraphQLEnumType) {

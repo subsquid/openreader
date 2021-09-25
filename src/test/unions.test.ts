@@ -74,8 +74,8 @@ describe('unions', function () {
     it('filtering', function () {
         return client.test(`
             query {
-                type_farmer:  equipment(where: {owner: {isTypeOf: "Farmer"}}) { id }
-                stack_Python: equipment(where: {owner: {stack:    "Python"}}) { id }
+                type_farmer:  equipment(where: {owner: {isTypeOf_eq: "Farmer"}}) { id }
+                stack_Python: equipment(where: {owner: {stack_eq:    "Python"}}) { id }
             }
         `, {
             type_farmer: [{id: '1'}],

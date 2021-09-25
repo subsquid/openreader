@@ -103,7 +103,7 @@ describe('full text search', function () {
     it('supports where conditions', function () {
         return client.test(`
             query {
-                search(text: "baz" whereBar: {bar: "qux"}) {
+                search(text: "baz" whereBar: {bar_eq: "qux"}) {
                     item {
                         ... on Foo { id foo }
                         ... on Bar { id bar }

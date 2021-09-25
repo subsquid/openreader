@@ -320,18 +320,18 @@ export class QueryBuilder {
                         exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${param}`)
                         break
                     }
-                    case 'starts_with':
+                    case 'startsWith':
                         exps.push(`starts_with(${lhs}, ${this.param(arg)})`)
                         break
-                    case 'not_starts_with':
+                    case 'not_startsWith':
                         exps.push(`NOT starts_with(${lhs}, ${this.param(arg)})`)
                         break
-                    case 'ends_with': {
+                    case 'endsWith': {
                         let param = this.param(arg)
                         exps.push(`right(${lhs}, length(${param})) = ${param}`)
                         break
                     }
-                    case 'not_ends_with': {
+                    case 'not_endsWith': {
                         let param = this.param(arg)
                         exps.push(`right(${lhs}, length(${param})) != ${param}`)
                         break
@@ -351,7 +351,7 @@ export class QueryBuilder {
             }
             case 'object':
             case 'union': {
-                assert(op == 'eq') // meaning no operator
+                assert(op == '-')
                 let cu = cursor.child(field)
                 for (let key in arg) {
                     let f = parseWhereField(key)
@@ -360,7 +360,7 @@ export class QueryBuilder {
                 break
             }
             case 'fk': {
-                assert(op == 'eq')
+                assert(op == '-')
                 if (hasConditions(arg)) {
                     exps.push(
                         this.generateWhere(cursor.child(field), arg)

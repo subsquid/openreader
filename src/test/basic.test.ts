@@ -64,7 +64,7 @@ describe('basic tests', function() {
     it('supports filtering by id', function () {
         return client.test(
             `query {
-                accounts(where: {id: "3"}) {
+                accounts(where: {id_eq: "3"}) {
                     id
                     wallet
                 }
@@ -116,7 +116,7 @@ describe('basic tests', function() {
     it('can fetch deep relations', function () {
         return client.test(
             `query {
-                accounts(where: {id: "3"}) {
+                accounts(where: {id_eq: "3"}) {
                     id
                     history {
                         id
@@ -194,14 +194,14 @@ describe('basic tests', function() {
     it('supports gql aliases', function () {
         return client.test(
             `query {
-                accounts(where: {id: "1"}) {
+                accounts(where: {id_eq: "1"}) {
                     balance
                     bag: wallet
                     purse: wallet
-                    payment1: history(where: {id: "1-1"}) {
+                    payment1: history(where: {id_eq: "1-1"}) {
                         balance
                     }
-                    payment2: history(where: {id: "1-2"}) {
+                    payment2: history(where: {id_eq: "1-2"}) {
                         balance
                     }
                 }
@@ -221,7 +221,7 @@ describe('basic tests', function() {
     it('supports gql fragments', function () {
         return client.test(
             `query {
-                accounts(where: {id: "1"}) {
+                accounts(where: {id_eq: "1"}) {
                     ...accountFields
                     history {
                         ...historicalBalance
@@ -250,7 +250,7 @@ describe('basic tests', function() {
     it('supports gql fragments on interfaces', function () {
         return client.test(
             `query {
-                accounts(where: {id: "1"}) {
+                accounts(where: {id_eq: "1"}) {
                     ...balance
                     history {
                         ...balance

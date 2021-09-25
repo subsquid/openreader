@@ -57,10 +57,10 @@ describe('scalars', function() {
         it('supports where conditions', function () {
             return client.test(`
                 query {
-                    t: scalars(where: {boolean: true}) { id }
-                    f: scalars(where: {boolean: false}) { id }
-                    nt: scalars(where: {boolean_not: true}) { id }
-                    nf: scalars(where: {boolean_not: false}) { id }
+                    t: scalars(where: {boolean_eq: true}) { id }
+                    f: scalars(where: {boolean_eq: false}) { id }
+                    nt: scalars(where: {boolean_not_eq: true}) { id }
+                    nf: scalars(where: {boolean_not_eq: false}) { id }
                 }
             `, {
                 t: [{id: '1'}],
@@ -75,10 +75,10 @@ describe('scalars', function() {
         it('supports where conditions', function () {
             return client.test(`
                 query {
-                    starts_with: scalars(where: {string_starts_with: "foo"} orderBy: id_ASC) { id }
-                    not_starts_with: scalars(where: {string_not_starts_with: "foo"} orderBy: id_ASC) { id }
-                    ends_with: scalars(where: {string_ends_with: "foo"} orderBy: id_ASC) { id }
-                    not_ends_with: scalars(where: {string_not_ends_with: "foo"} orderBy: id_ASC) { id }
+                    starts_with: scalars(where: {string_startsWith: "foo"} orderBy: id_ASC) { id }
+                    not_starts_with: scalars(where: {string_not_startsWith: "foo"} orderBy: id_ASC) { id }
+                    ends_with: scalars(where: {string_endsWith: "foo"} orderBy: id_ASC) { id }
+                    not_ends_with: scalars(where: {string_not_endsWith: "foo"} orderBy: id_ASC) { id }
                     contains: scalars(where: {string_contains: "foo"} orderBy: id_ASC) { id }
                     not_contains: scalars(where: {string_not_contains: "foo"} orderBy: id_ASC) { id }
                     case_sensitive: scalars(where: {string_contains: "Foo"} orderBy: id_ASC) { id }
@@ -129,8 +129,8 @@ describe('scalars', function() {
         it('supports where conditions', function () {
             return client.test(`
                 query {
-                    eq: scalars(where: {bigint: 2000000000000000000000000000000000000} orderBy: id_ASC) { id }
-                    not_eq: scalars(where: {bigint_not: 2000000000000000000000000000000000000} orderBy: id_ASC) { id }
+                    eq: scalars(where: {bigint_eq: 2000000000000000000000000000000000000} orderBy: id_ASC) { id }
+                    not_eq: scalars(where: {bigint_not_eq: 2000000000000000000000000000000000000} orderBy: id_ASC) { id }
                     gt: scalars(where: {bigint_gt: 1000000000000000000000000000000000000} orderBy: id_ASC) { id }
                     gte: scalars(where: {bigint_gte: 1000000000000000000000000000000000000} orderBy: id_ASC) { id }
                     lt: scalars(where: {bigint_lt: 1000000000000000000000000000000000000} orderBy: id_ASC) { id }
@@ -244,8 +244,8 @@ describe('scalars', function() {
         it('supports where conditions', function () {
             return client.test(`
                 query {
-                    eq: scalars(where: {bytes: "0xaa"} orderBy: id_ASC) { id }
-                    deep_eq: scalars(where: {deep: {bytes: "0xccdd"}} orderBy: id_ASC) { id }
+                    eq: scalars(where: {bytes_eq: "0xaa"} orderBy: id_ASC) { id }
+                    deep_eq: scalars(where: {deep: {bytes_eq: "0xccdd"}} orderBy: id_ASC) { id }
                 }
             `, {
                 eq: [{id: '13'}],

@@ -1,5 +1,6 @@
 
 export type WhereOp =
+    '-' | // no operator
     'eq' | 'not_eq' |
     'gt' |
     'gte' |
@@ -7,15 +8,16 @@ export type WhereOp =
     'lte' |
     'in' | 'not_in' |
     'contains' | 'not_contains' |
-    'starts_with' | 'not_starts_with' |
-    'ends_with' | 'not_ends_with' |
+    'startsWith' | 'not_startsWith' |
+    'endsWith' | 'not_endsWith' |
     'some' |
     'every' |
     'none'
 
 
 const ENDINGS = [
-    'not',
+    'eq',
+    'not_eq',
     'gt',
     'gte',
     'lt',
@@ -24,10 +26,10 @@ const ENDINGS = [
     'not_in',
     'contains',
     'not_contains',
-    'starts_with',
-    'not_starts_with',
-    'ends_with',
-    'not_ends_with',
+    'startsWith',
+    'not_startsWith',
+    'endsWith',
+    'not_endsWith',
     'some',
     'every',
     'none'
@@ -44,12 +46,8 @@ function parseEnding(field: string): string {
 
 export function parseWhereField(field: string): {op: WhereOp, field: string} {
     let ending = parseEnding(field)
-    if (!ending) return {op: 'eq', field}
+    if (!ending) return {op: '-', field}
     let fieldName = field.slice(0, -(ending.length + 1))
-    if (ending == 'not') return {
-        op: 'not_eq',
-        field: fieldName
-    }
     return {
         op: ending as WhereOp,
         field: fieldName
