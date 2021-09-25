@@ -2,7 +2,7 @@ import {useDatabase, useServer} from "./util/setup"
 
 describe('scalars', function() {
     useDatabase([
-        `create table scalar (id text primary key, "boolean" bool, "bigint" numeric, "string" text, date_time timestamptz, "bytes" bytea, deep jsonb)`,
+        `create table scalar (id text primary key, "boolean" bool, "bigint" numeric, "string" text, enum text, date_time timestamptz, "bytes" bytea, deep jsonb)`,
         `insert into scalar (id, "boolean") values ('1', true)`,
         `insert into scalar (id, "boolean") values ('2', false)`,
         `insert into scalar (id, "bigint", deep) values ('3', 1000000000000000000000000000000000000, '{"bigint": "1000000000000000000000000000000000000"}'::jsonb)`,
@@ -17,6 +17,9 @@ describe('scalars', function() {
         `insert into scalar (id, "date_time", deep) values ('12', '2021-09-24T01:00:00.001Z', '{"dateTime": "2021-09-24T00:00:00.1Z"}'::jsonb)`,
         `insert into scalar (id, "bytes", deep) values ('13', decode('aa', 'hex'), '{"bytes": "0xaa"}'::jsonb)`,
         `insert into scalar (id, "bytes", deep) values ('14', decode('bb', 'hex'), '{"bytes": "0xCCDD"}'::jsonb)`,
+        `insert into scalar (id, "enum") values ('15', 'A')`,
+        `insert into scalar (id, "enum") values ('16', 'B')`,
+        `insert into scalar (id, "enum") values ('17', 'C')`,
     ])
 
     const client = useServer(`
@@ -24,6 +27,7 @@ describe('scalars', function() {
             id: ID!
             boolean: Boolean
             string: String
+            enum: Enum
             bigint: BigInt
             dateTime: DateTime
             bytes: Bytes
@@ -34,6 +38,10 @@ describe('scalars', function() {
             bigint: BigInt
             dateTime: DateTime
             bytes: Bytes
+        }
+        
+        enum Enum {
+            A B C
         }
     `)
 
@@ -91,6 +99,41 @@ describe('scalars', function() {
                 contains: [{id: '6'}, {id: '7'}, {id: '8'}],
                 not_contains: [{id: '9'}],
                 case_sensitive: []
+            })
+        })
+    })
+
+    describe('Enum', function () {
+        it('outputs correctly', function () {
+            return client.test(`
+                query {
+                    scalars(where: {id_in: ["15", "16", "17"]} orderBy: id_ASC) {
+                        id
+                        enum
+                    }
+                }
+            `, {
+                scalars: [
+                    {id: '15', enum: 'A'},
+                    {id: '16', enum: 'B'},
+                    {id: '17', enum: 'C'},
+                ]
+            })
+        })
+
+        it('supports where conditions', function () {
+            return client.test(`
+                query {
+                    eq: scalars(where: {enum_eq: A} orderBy: id_ASC) { id }
+                    not_eq: scalars(where: {enum_not_eq: A} orderBy: id_ASC) { id }
+                    in: scalars(where: {enum_in: [A, B]} orderBy: id_ASC) { id }
+                    not_in: scalars(where: {enum_not_in: B} orderBy: id_ASC) { id }
+                }
+            `, {
+                eq: [{id: '15'}],
+                not_eq: [{id: '16'}, {id: '17'}],
+                in: [{id: '15'}, {id: '16'}],
+                not_in: [{id: '15'}, {id: '17'}],
             })
         })
     })

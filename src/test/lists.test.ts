@@ -7,6 +7,7 @@ describe('lists', function () {
             id text primary key, 
             int_array integer[], 
             bigint_array numeric[], 
+            enum_array text[],
             datetime_array timestamptz[],
             bytes_array bytea[],
             list_of_list_of_int jsonb, 
@@ -23,21 +24,29 @@ describe('lists', function () {
         `insert into lists (id, datetime_array) values ('70', array['2020-01-01T00:00:00Z', '2022-01-01T00:00:00Z']::timestamptz[])`,
         `insert into lists (id, bytes_array) values ('8', array['hello', 'world']::bytea[])`,
         `insert into lists (id, bytes_array) values ('9', array['hello', 'big', 'world']::bytea[])`,
+        `insert into lists (id, enum_array) values ('10', array['A', 'B', 'C'])`,
+        `insert into lists (id, enum_array) values ('11', array['C',  'D'])`,
+        `insert into lists (id, enum_array) values ('12', array['A',  'D'])`,
     ])
 
-    const client = useServer(`
-        type Foo {
-            foo: Int
-            bar: Int
-        }
-    
+    const client = useServer(`    
         type Lists @entity {
             intArray: [Int!]
+            enumArray: [Enum!]
             bigintArray: [BigInt!]
             datetimeArray: [DateTime!]
             bytesArray: [Bytes!]
             listOfListOfInt: [[Int]]
             listOfJsonObjects: [Foo!]
+        }
+        
+        enum Enum {
+            A B C D E F
+        }
+        
+        type Foo {
+            foo: Int
+            bar: Int
         }
     `)
 
@@ -78,6 +87,39 @@ describe('lists', function () {
                 any: [{id: '2'}, {id: '20'}],
                 none: [{id: '1'}, {id: '20'}],
                 nothing: []
+            })
+        })
+    })
+
+    describe('enum arrays', function () {
+        it('outputs correctly', function () {
+            return client.test(`
+                query {
+                    lists(where: {id_in: ["10", "11", "12"]} orderBy: id_ASC) {
+                        id
+                        enumArray
+                    }
+                }
+            `, {
+                lists: [
+                    {id: '10', enumArray: ['A', 'B', 'C']},
+                    {id: '11', enumArray: ['C', 'D']},
+                    {id: '12', enumArray: ['A', 'D']}
+                ]
+            })
+        })
+
+        it('supports where conditions', function () {
+            return client.test(`
+                query {
+                    all : lists(where: {enumArray_containsAll: [A, B]} orderBy: id_ASC) { id }
+                    any : lists(where: {enumArray_containsAny: D} orderBy: id_ASC) { id }
+                    none: lists(where: {enumArray_containsNone: A} orderBy: id_ASC) { id }
+                }
+            `, {
+                all: [{id: '10'}],
+                any: [{id: '11'}, {id: '12'}],
+                none: [{id: '11'}],
             })
         })
     })
