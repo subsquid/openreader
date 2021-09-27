@@ -29,6 +29,6 @@ Below is possibly incomplete list of edge cases where it differs.
 then their properties must have either different names or have a same type (modulo nullability).
 2. Only camel case names of types and properties are allowed.
 3. Filtering on typed json fields works without `_json` operator.
-4. `orderBy` argument of relay connection is required.
+4. `orderBy` argument of relay connection is required, only forward pagination is supported.
 5. `RelayConnection.edges`, `RelayConnection.edges.node` and `FulltextSearch.item` fields
 do not support multiple aliases in GraphQL queries.
