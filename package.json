@@ -1,14 +1,19 @@
 {
   "name": "@subsquid/openreader",
-  "private": "true",
+  "version": "0.0.0",
+  "description": "GraphQL server for Hydra",
+  "keywords": ["graphql", "opencrud"],
+  "license": "MIT",
+  "repository": "git@github.com:subsquid/openreader.git",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "openreader": "./dist/main.js"
   },
-  "scripts": {
-    "prepack": "tsc"
-  },
   "files": [
-    "dist"
+    "dist",
+    "!dist/test"
   ],
   "dependencies": {
     "@subsquid/graphiql-console": "^0.2.0",
