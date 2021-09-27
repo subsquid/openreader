@@ -28,6 +28,7 @@ const baseSchema = buildASTSchema(gql(`
     directive @unique on FIELD_DEFINITION
     directive @fulltext(query: String!) on FIELD_DEFINITION
     directive @variant on OBJECT # legacy
+    directive @jsonField on OBJECT # legacy
     ${scalars_list.map(name => 'scalar ' + name).join('\n')}
 `))
 
