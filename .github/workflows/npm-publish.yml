@@ -36,4 +36,4 @@ jobs:
           make down
 
       - name: Publish
-        run: npm pack
+        run: npm publish
