@@ -1,6 +1,6 @@
-import {gql} from "apollo-server-core"
+import {parse} from "graphql"
 import {Client as PgClient, ClientBase, Pool} from "pg"
-import {buildSchema} from "../../gql/schema"
+import {buildModel, buildSchema} from "../../gql/schema"
 import {readDbConfig} from "../../main"
 import {ListeningServer, Server} from "../../server"
 import {Client} from "./client"
@@ -52,7 +52,7 @@ export function useServer(schema: string): Client {
     before(async () => {
         info = await new Server({
             db,
-            schema: buildSchema(gql(schema))
+            model: buildModel(buildSchema(parse(schema)))
         }).listen(0)
         client.endpoint = `http://localhost:${info.port}/graphql`
     })

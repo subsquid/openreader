@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 
-import * as fs from "fs"
-import {parse, Source, validateSchema} from "graphql"
 import {Pool, PoolConfig} from "pg"
-import {buildSchema} from "./gql/schema"
 import {Server} from "./server"
+import {loadModel} from "./tools"
 
 
 function main() {
@@ -20,20 +18,11 @@ function main() {
         process.exit(1)
     }
 
-    let schema = buildSchema(
-        readSchemaDocument(args[0])
-    )
-
-    let errors = validateSchema(schema).filter(err => !/query root/i.test(err.message))
-    if (errors.length > 0) {
-        errors.forEach(err => console.log(err))
-        process.exit(1)
-    }
-
+    let model = loadModel(args[0])
     let db = new Pool(readDbConfig())
     let port = process.env.GRAPHQL_SERVER_PORT || 3000
 
-    new Server({schema, db}).listen(port).then(
+    new Server({model, db}).listen(port).then(
         () => {
             console.log('OpenReader is listening on port ' + port)
         },
@@ -63,15 +52,6 @@ export function readDbConfig(): PoolConfig {
         db.password = process.env.DB_PASS
     }
     return db
-}
-
-
-function readSchemaDocument(file: string) {
-    let src = new Source(
-        fs.readFileSync(file, 'utf-8'),
-        file
-    )
-    return parse(src)
 }
 
 

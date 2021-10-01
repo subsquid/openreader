@@ -1,4 +1,3 @@
-import {gql} from "apollo-server-core"
 import assert from "assert"
 import {
     buildASTSchema,
@@ -14,7 +13,9 @@ import {
     GraphQLOutputType,
     GraphQLScalarType,
     GraphQLSchema,
-    GraphQLUnionType
+    GraphQLUnionType,
+    parse,
+    validateSchema
 } from "graphql"
 import {DirectiveNode} from "graphql/language/ast"
 import {Model, Prop, PropType} from "../model"
@@ -22,7 +23,7 @@ import {validateModel} from "../model.tools"
 import {scalars_list} from "../scalars"
 
 
-const baseSchema = buildASTSchema(gql(`
+const baseSchema = buildASTSchema(parse(`
     directive @entity on OBJECT
     directive @derivedFrom(field: String!) on FIELD_DEFINITION
     directive @unique on FIELD_DEFINITION
@@ -34,7 +35,12 @@ const baseSchema = buildASTSchema(gql(`
 
 
 export function buildSchema(doc: DocumentNode): GraphQLSchema {
-    return extendSchema(baseSchema, doc)
+    let schema = extendSchema(baseSchema, doc)
+    let errors = validateSchema(schema).filter(err => !/query root/i.test(err.message))
+    if (errors.length > 0) {
+        throw errors[0]
+    }
+    return schema
 }
 
 

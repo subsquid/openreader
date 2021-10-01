@@ -1,6 +1,5 @@
-import {gql} from "apollo-server-core"
 import assert from "assert"
-import {DocumentNode, print} from "graphql"
+import {DocumentNode, parse, print} from "graphql"
 import {Entity, Enum, FTS_Query, Interface, JsonObject, Model, Prop, Union} from "../model"
 import {getOrderByMapping} from "../orderBy"
 import {scalars_list} from "../scalars"
@@ -319,5 +318,5 @@ export function generateOpenCrudQueries(model: Model): string {
 export function buildServerSchema(model: Model): DocumentNode {
     let scalars = scalars_list.map(name => 'scalar ' + name).join('\n')
     let queries = generateOpenCrudQueries(model)
-    return gql(scalars  + '\n\n' + queries)
+    return parse(scalars  + '\n\n' + queries)
 }
