@@ -2,7 +2,10 @@
   "name": "@subsquid/openreader",
   "version": "0.0.0",
   "description": "GraphQL server for Hydra",
-  "keywords": ["graphql", "opencrud"],
+  "keywords": [
+    "graphql",
+    "opencrud"
+  ],
   "license": "MIT",
   "repository": "git@github.com:subsquid/openreader.git",
   "publishConfig": {
@@ -16,6 +19,8 @@
     "!dist/test"
   ],
   "dependencies": {
+    "@graphql-tools/merge": "^8",
+    "@graphql-tools/utils": "^8",
     "@subsquid/graphiql-console": "^0.2.0",
     "apollo-server-core": "^3.3.0",
     "apollo-server-express": "^3.3.0",

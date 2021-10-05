@@ -1,3 +1,4 @@
+import {mergeResolvers} from "@graphql-tools/merge"
 import type {IResolvers} from "@graphql-tools/utils"
 import {ApolloServerPluginDrainHttpServer, Context, ContextFunction} from "apollo-server-core"
 import type {PluginDefinition} from "apollo-server-core/src/types"
@@ -38,9 +39,9 @@ export interface ServerOptions {
 
 
 export async function serve(options: ServerOptions): Promise<ListeningServer> {
-    let resolvers = {
-        ...buildResolvers(options.model),
-        ...options.customResolvers
+    let resolvers = buildResolvers(options.model)
+    if (options.customResolvers) {
+        resolvers = mergeResolvers([resolvers, options.customResolvers])
     }
 
     let typeDefs = [
