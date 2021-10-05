@@ -6,13 +6,16 @@ import {GraphQLRequestContext} from "apollo-server-types"
 import assert from "assert"
 import express from "express"
 import fs from "fs"
-import {DocumentNode} from "graphql"
+import type {DocumentNode} from "graphql"
 import http from "http"
 import path from "path"
 import {Pool, PoolClient} from "pg"
 import {buildServerSchema} from "./gql/opencrud"
-import {Model} from "./model"
+import type {Model} from "./model"
 import {buildResolvers, ResolverContext} from "./resolver"
+
+
+export type ResolversMap = IResolvers
 
 
 export interface ListeningServer {
@@ -36,11 +39,11 @@ export class Server {
         this.model = options.model
     }
 
-    buildTypeDefs(): DocumentNode {
-        return buildServerSchema(this.model)
+    buildTypeDefs(): DocumentNode[] {
+        return [buildServerSchema(this.model)]
     }
 
-    buildResolvers(): IResolvers {
+    buildResolvers(): ResolversMap {
         return buildResolvers(this.model)
     }
 

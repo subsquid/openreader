@@ -5,14 +5,7 @@ import {getEntity, getFtsQuery, getUnionProps} from "./model.tools"
 import {OpenCrudOrderByValue, OrderBy, parseOrderBy} from "./orderBy"
 import type {FtsRequestedFields, RequestedFields} from "./requestedFields"
 import type {ResolverContext} from "./resolver"
-import {
-    fromJsonCast,
-    fromJsonToTransportCast,
-    fromTransportArrayCast,
-    fromTransportCast,
-    toTransportArrayCast,
-    toTransportCast
-} from "./scalars"
+import {fromJsonCast, fromJsonToOutputCast, toOutputArrayCast, toOutputCast} from "./scalars"
 import {ensureArray, snakeCase, toColumn, toFkColumn, toInt, toTable, unsupportedCase} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
 
@@ -311,7 +304,6 @@ export class QueryBuilder {
             case 'scalar':
             case 'enum': {
                 let lhs = cursor.native(field)
-                let typeName = propType.name
                 switch(op) {
                     case 'in':
                     case 'not_in': {
@@ -319,7 +311,7 @@ export class QueryBuilder {
                         // 1. use array parameter and do: WHERE col IN (SELECT * FROM unnest($array_param))
                         // 2. use arg list
                         // Let's try second option first.
-                        let list = ensureArray(arg).map(a => fromTransportCast(typeName, this.param(a)))
+                        let list = ensureArray(arg).map(a => this.param(a))
                         let param = `(${list.join(', ')})`
                         exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${param}`)
                         break
@@ -347,8 +339,7 @@ export class QueryBuilder {
                         exps.push(`position(${this.param(arg)} in ${lhs}) = 0`)
                         break
                     default: {
-                        let param = fromTransportCast(propType.name, this.param(arg))
-                        exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${param}`)
+                        exps.push(`${lhs} ${whereOpToSqlOperator(op)} ${this.param(arg)}`)
                     }
                 }
                 break
@@ -356,7 +347,7 @@ export class QueryBuilder {
             case 'list': {
                 let item = propType.item.type
                 assert(item.kind == 'scalar' || item.kind == 'enum')
-                let param = fromTransportArrayCast(item.name, this.param(arg))
+                let param = this.param(arg)
                 let lhs = cursor.native(field)
                 switch(op) {
                     case 'containsAll':
@@ -588,9 +579,9 @@ class Cursor {
             case 'scalar':
             case 'enum':
                 if (this.object.kind == 'object') {
-                    return fromJsonToTransportCast(prop.type.name, this.prefix, propName)
+                    return fromJsonToOutputCast(prop.type.name, this.prefix, propName)
                 } else {
-                    return toTransportCast(prop.type.name, this.column(propName))
+                    return toOutputCast(prop.type.name, this.column(propName))
                 }
             case 'list':
                 let itemType = prop.type.item.type
@@ -598,7 +589,7 @@ class Cursor {
                     // this is json
                     return this.field(propName)
                 } else {
-                    return toTransportArrayCast(itemType.name, this.column(propName))
+                    return toOutputArrayCast(itemType.name, this.column(propName))
                 }
             default:
                 throw unsupportedCase(prop.type.kind)

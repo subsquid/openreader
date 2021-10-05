@@ -66,17 +66,18 @@ export function toInt(val: number | string): number {
 
 
 export class Output {
-    private out = ''
+    private out: (string | {indent: string, gen: () => string[]})[] = []
     private indent = ''
 
     line(s?: string): void {
         if (s) {
-            this.out += this.indent + s
+            this.out.push(this.indent + s)
+        } else {
+            this.out.push('')
         }
-        this.out += '\n'
     }
 
-    block(start: string, cb: () => void) {
+    block(start: string, cb: () => void): void {
         this.line(start + ' {')
         this.indent += '  '
         try {
@@ -87,7 +88,27 @@ export class Output {
         this.line('}')
     }
 
+    lazy(gen: () => string[]): void {
+        this.out.push({indent: this.indent, gen})
+    }
+
     toString(): string {
-        return this.out
+        let out = ''
+        for (let i = 0; i < this.out.length; i++) {
+            let line = this.out[i]
+            if (typeof line == 'string') {
+                out += line + '\n'
+            } else {
+                let lazy = line
+                lazy.gen().forEach(s => {
+                    if (s) {
+                        out += lazy.indent + s + '\n'
+                    } else {
+                        out += '\n'
+                    }
+                })
+            }
+        }
+        return out
     }
 }

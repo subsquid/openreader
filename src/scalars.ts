@@ -1,17 +1,22 @@
 /**
  * The current concept of custom scalars is as follows:
  *
- * Each custom scalar type has canonical string representation which is used every where:
- *    in JSON requests/responses
- *    in graphql schemas
- *    for database io
- *    for intermediate resolver values
+ * Each custom scalar has a canonical string representation which is used almost everywhere:
+ *    in JSON responses
+ *    in graphql queries/schemas
+ *    in jsonb database columns
+ *    in database results (except DateTime)
  *
- * Because our canonical representations are used in SQL query parameters and results,
- * database must support 2 way coercions between those and underlying database types.
+ * Database must support 2 way coercion between underlying database type and canonical representation
+ * of a corresponding scalar.
  *
- * One exception is DateTime. We receive it from database in native format (getting Date objects from driver),
- * then convert it to string with gql resolver.
+ * We receive from database canonical strings and use them within our resolvers as is.
+ *
+ * GraphQL parsing procedures convert canonical string representation to corresponding js type.
+ * This is for compatibility with possible extensions which would like to reuse our scalars.
+ *
+ * In GraphQL serialization procedures we accept both a canonical string representation
+ * and corresponding js type.
  */
 
 import {IResolvers} from "@graphql-tools/utils"
@@ -22,7 +27,6 @@ export interface Scalar {
     gql: GraphQLScalarType
     fromStringCast: (sqlExp: string) => string
     toStringCast: (sqlExp: string) => string
-    fromStringArrayCast: (sqlExp: string) => string
     toStringArrayCast: (sqlExp: string) => string
 }
 
@@ -32,27 +36,23 @@ export const scalars: Record<string, Scalar> = {
         gql: new GraphQLScalarType({
             name: 'BigInt',
             description: 'Big number integer',
-            serialize(value: number | string) {
+            serialize(value: number | string | bigint) {
                 return ''+value
             },
             parseValue(value: string) {
                 if (!isBigInt(value)) throw invalidFormat('BigInt', value)
-                return value
+                return BigInt(value)
             },
             parseLiteral(ast) {
                 switch(ast.kind) {
                     case "StringValue":
                         if (isBigInt(ast.value)) {
-                            if (ast.value[0] == '+') {
-                                return ast.value.slice(1)
-                            } else {
-                                return ast.value
-                            }
+                            return BigInt(ast.value)
                         } else {
                             throw invalidFormat('BigInt', ast.value)
                         }
                     case "IntValue":
-                        return ''+ast.value
+                        return BigInt(ast.value)
                     default:
                         return null
                 }
@@ -63,9 +63,6 @@ export const scalars: Record<string, Scalar> = {
         },
         toStringCast(exp) {
             return `(${exp})::text`
-        },
-        fromStringArrayCast(exp) {
-            return `(${exp})::numeric[]`
         },
         toStringArrayCast(exp) {
             return `(${exp})::text[]`
@@ -102,9 +99,6 @@ export const scalars: Record<string, Scalar> = {
         toStringCast(exp) {
             return exp
         },
-        fromStringArrayCast(exp) {
-            return `(${exp})::timestamptz[]`
-        },
         toStringArrayCast(exp) {
             return exp
         }
@@ -113,9 +107,13 @@ export const scalars: Record<string, Scalar> = {
         gql: new GraphQLScalarType({
             name: 'Bytes',
             description: 'Binary data encoded as a hex string always prefixed with 0x',
-            serialize(value: string) {
-                if (!isBytesString(value)) throw invalidFormat('Bytes', value)
-                return value.toLowerCase()
+            serialize(value: string | Buffer) {
+                if (typeof value == 'string') {
+                    if (!isBytesString(value)) throw invalidFormat('Bytes', value)
+                    return value.toLowerCase()
+                } else {
+                    return '0x' + value.toString('hex')
+                }
             },
             parseValue(value: string) {
                 return parseBytes(value)
@@ -134,9 +132,6 @@ export const scalars: Record<string, Scalar> = {
         },
         toStringCast(exp) {
             return `'0x' || encode(${exp}, 'hex')`
-        },
-        fromStringArrayCast(exp) {
-            return `array(select decode(substr(i, 3), 'hex') from unnest((${exp})::text[]) as i)`
         },
         toStringArrayCast(exp) {
             return `array(select '0x' || encode(i, 'hex') from unnest(${exp}) as i)`
@@ -159,11 +154,11 @@ function isIsoDateTimeString(s: string): boolean {
 }
 
 
-function parseDateTime(s: string): string {
+function parseDateTime(s: string): Date {
     if (!isIsoDateTimeString(s)) throw invalidFormat('DateTime', s)
     let timestamp = Date.parse(s)
     if (isNaN(timestamp)) throw invalidFormat('DateTime', s)
-    return s
+    return new Date(timestamp)
 }
 
 
@@ -172,9 +167,9 @@ function isBytesString(s: string): boolean {
 }
 
 
-function parseBytes(s: string): string {
+function parseBytes(s: string): Buffer {
     if (!isBytesString(s)) throw invalidFormat('Bytes', s)
-    return s.toLowerCase()
+    return Buffer.from(s.slice(2), 'hex')
 }
 
 
@@ -195,7 +190,7 @@ export function getScalarResolvers(): IResolvers {
 }
 
 
-export function toTransportCast(scalarType: string, sqlExp: string): string {
+export function toOutputCast(scalarType: string, sqlExp: string): string {
     let s = scalars[scalarType]
     if (s) {
         return s.toStringCast(sqlExp)
@@ -205,7 +200,7 @@ export function toTransportCast(scalarType: string, sqlExp: string): string {
 }
 
 
-export function fromTransportCast(scalarType: string, sqlExp: string): string {
+export function fromStringCast(scalarType: string, sqlExp: string): string {
     let s = scalars[scalarType]
     if (s) {
         return s.fromStringCast(sqlExp)
@@ -215,20 +210,10 @@ export function fromTransportCast(scalarType: string, sqlExp: string): string {
 }
 
 
-export function toTransportArrayCast(scalarType: string, sqlExp: string): string {
+export function toOutputArrayCast(scalarType: string, sqlExp: string): string {
     let s = scalars[scalarType]
     if (s) {
         return s.toStringArrayCast(sqlExp)
-    } else {
-        return sqlExp
-    }
-}
-
-
-export function fromTransportArrayCast(scalarType: string, sqlExp: string): string {
-    let s = scalars[scalarType]
-    if (s) {
-        return s.fromStringArrayCast(sqlExp)
     } else {
         return sqlExp
     }
@@ -242,12 +227,12 @@ export function fromJsonCast(scalarType: string, objSqlExp: string, prop: string
         case 'Float':
             return `(${objSqlExp}->>'${prop}')::numeric`
         default:
-            return fromTransportCast(scalarType, `${objSqlExp}->>'${prop}'`)
+            return fromStringCast(scalarType, `${objSqlExp}->>'${prop}'`)
     }
 }
 
 
-export function fromJsonToTransportCast(scalarType: string, objSqlExp: string, prop: string) {
+export function fromJsonToOutputCast(scalarType: string, objSqlExp: string, prop: string) {
     switch(scalarType) {
         case 'Int':
             return `(${objSqlExp}->'${prop}')::integer`
