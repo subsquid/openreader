@@ -4,7 +4,6 @@ import type {Entity, JsonObject, Model} from "./model"
 import {getEntity, getFtsQuery, getUnionProps} from "./model.tools"
 import {OpenCrudOrderByValue, OrderBy, parseOrderBy} from "./orderBy"
 import type {FtsRequestedFields, RequestedFields} from "./requestedFields"
-import type {ResolverContext} from "./resolver"
 import {fromJsonCast, fromJsonToOutputCast, toOutputArrayCast, toOutputCast} from "./scalars"
 import {ensureArray, snakeCase, toColumn, toFkColumn, toInt, toTable, unsupportedCase} from "./util"
 import {hasConditions, parseWhereField, WhereOp, whereOpToSqlOperator} from "./where"
@@ -19,15 +18,13 @@ export interface ListArgs {
 
 
 export class QueryBuilder {
-    public params: any[] = []
+    private params: any[] = []
     private aliases: AliasSet = new AliasSet()
-    private db: ClientBase
-    private model: Model
 
-    constructor(ctx: ResolverContext) {
-        this.db = ctx.db
-        this.model = ctx.model
-    }
+    constructor(
+        private model: Model,
+        private db: ClientBase
+    ) {}
 
     private param(value: any): string {
         return '$' + this.params.push(value)

@@ -2,7 +2,8 @@ import type {IFieldResolver, IResolvers} from "@graphql-tools/utils"
 import {UserInputError} from "apollo-server-core"
 import assert from "assert"
 import type {GraphQLResolveInfo} from "graphql"
-import type {ClientBase} from "pg"
+import type {Pool} from "pg"
+import {ClientBase} from "pg"
 import type {Entity, JsonObject, Model} from "./model"
 import {QueryBuilder} from "./queryBuilder"
 import {
@@ -19,8 +20,7 @@ import {ensureArray, lowerCaseFirst, toQueryListField, upperCaseFirst} from "./u
 
 
 export interface ResolverContext {
-    db: ClientBase
-    model: Model
+    openReaderDatabase: Pool
 }
 
 
@@ -34,22 +34,28 @@ export function buildResolvers(model: Model): IResolvers {
             case 'entity':
                 Query[toQueryListField(name)] = (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
-                    return new QueryBuilder(context).executeSelect(name, args, fields)
+                    return withTransaction(context,
+                        db => new QueryBuilder(model, db).executeSelect(name, args, fields)
+                    )
                 }
                 Query[`${lowerCaseFirst(name)}ById`] = async (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
-                    let result = await new QueryBuilder(context).executeSelect(name, {where: {id_eq: args.id}}, fields)
+                    let result = await withTransaction(context,
+                        db => new QueryBuilder(model, db).executeSelect(name, {where: {id_eq: args.id}}, fields)
+                    )
                     assert(result.length < 2)
                     return result[0]
                 }
                 Query[`${lowerCaseFirst(name)}ByUniqueInput`] = async (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
-                    let result = await new QueryBuilder(context).executeSelect(name, {where: {id_eq: args.where.id}}, fields)
+                    let result = await withTransaction(context,
+                        db => new QueryBuilder(model, db).executeSelect(name, {where: {id_eq: args.where.id}}, fields)
+                    )
                     assert(result.length < 2)
                     return result[0]
                 }
                 Query[toQueryListField(name) + 'Connection'] = (source, args, context, info) => {
-                    return resolveEntityConnection(name, args, context, info)
+                    return withTransaction(context, db => resolveEntityConnection(model, name, args, info, db))
                 }
                 installFieldResolvers(name, item)
                 break
@@ -64,7 +70,9 @@ export function buildResolvers(model: Model): IResolvers {
             case 'fts':
                 Query[name] = (source, args, context, info) => {
                     let fields = ftsRequestedFields(model, name, info)
-                    return new QueryBuilder(context).executeFulltextSearch(name, args, fields)
+                    return withTransaction(context,
+                        db => new QueryBuilder(model, db).executeFulltextSearch(name, args, fields)
+                    )
                 }
                 resolvers[`${upperCaseFirst(name)}_Item`] = {
                     __resolveType: resolveUnionType
@@ -114,10 +122,11 @@ interface ConnectionResponse extends RelayConnectionResponse<any> {
 
 
 async function resolveEntityConnection(
+    model: Model,
     entityName: string,
     args: ConnectionArgs,
-    context: ResolverContext,
-    info: GraphQLResolveInfo
+    info: GraphQLResolveInfo,
+    db: ClientBase
 ): Promise<ConnectionResponse> {
     let response: ConnectionResponse = {}
 
@@ -144,9 +153,9 @@ async function resolveEntityConnection(
         }
     }
 
-    let fields = connectionRequestedFields(context.model, entityName, info)
+    let fields = connectionRequestedFields(model, entityName, info)
     if (fields.edges?.node) {
-        let nodes = await new QueryBuilder(context).executeSelect(entityName, listArgs, fields.edges.node)
+        let nodes = await new QueryBuilder(model, db).executeSelect(entityName, listArgs, fields.edges.node)
         let edges: ConnectionEdge<any>[] = new Array(Math.min(limit, nodes.length))
         for (let i = 0; i < edges.length; i++) {
             edges[i] = {
@@ -160,7 +169,7 @@ async function resolveEntityConnection(
             response.totalCount = offset + nodes.length
         }
     } else if (fields.edges?.cursor || fields.pageInfo) {
-        let listLength = await new QueryBuilder(context).executeListCount(entityName, listArgs)
+        let listLength = await new QueryBuilder(model, db).executeListCount(entityName, listArgs)
         response.pageInfo = pageInfo(listLength)
         if (fields.edges?.cursor) {
             response.edges = []
@@ -176,8 +185,25 @@ async function resolveEntityConnection(
     }
 
     if (fields.totalCount && response.totalCount == null) {
-        response.totalCount = await new QueryBuilder(context).executeSelectCount(entityName, listArgs.where)
+        response.totalCount = await new QueryBuilder(model, db).executeSelectCount(entityName, listArgs.where)
     }
 
     return response
+}
+
+
+async function withTransaction<T>(context: ResolverContext, cb: (db: ClientBase) => Promise<T>): Promise<T> {
+    let client = await context.openReaderDatabase.connect()
+    try {
+        await client.query('START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY')
+        return await cb(client)
+    } finally {
+        try {
+            await client.query('COMMIT')
+        } catch(e: any) {
+            // ignore
+        } finally {
+            client.release()
+        }
+    }
 }

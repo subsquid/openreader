@@ -1,15 +1,14 @@
-import {IResolvers} from "@graphql-tools/utils"
+import type {IResolvers} from "@graphql-tools/utils"
 import {ApolloServerPluginDrainHttpServer} from "apollo-server-core"
-import {PluginDefinition} from "apollo-server-core/src/types"
+import type {PluginDefinition} from "apollo-server-core/src/types"
 import {ApolloServer} from "apollo-server-express"
-import {GraphQLRequestContext} from "apollo-server-types"
 import assert from "assert"
 import express from "express"
 import fs from "fs"
 import type {DocumentNode} from "graphql"
 import http from "http"
 import path from "path"
-import {Pool, PoolClient} from "pg"
+import type {Pool} from "pg"
 import {buildServerSchema} from "./gql/opencrud"
 import type {Model} from "./model"
 import {buildResolvers, ResolverContext} from "./resolver"
@@ -49,32 +48,12 @@ export class Server {
 
     buildContext(): () => Promise<ResolverContext> {
         return async () => {
-            let db = await this.db.connect()
-            try {
-                await db.query('START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY')
-            } catch(e) {
-                db.release()
-                throw e
-            }
-            return {db, model: this.model}
+            return {openReaderDatabase: this.db}
         }
     }
 
     buildPlugins(): PluginDefinition[] {
-        return [{
-            async requestDidStart() {
-                return {
-                    async willSendResponse(req: GraphQLRequestContext) {
-                        let ctx = req.context as ResolverContext
-                        try {
-                            await ctx.db.query('COMMIT')
-                        } finally {
-                            (ctx.db as PoolClient).release()
-                        }
-                    }
-                }
-            }
-        }]
+        return []
     }
 
     applyConsole(app: express.Application): void {
