@@ -2,7 +2,7 @@ import {parse} from "graphql"
 import {Client as PgClient, ClientBase, Pool} from "pg"
 import {buildModel, buildSchema} from "../../gql/schema"
 import {readDbConfig} from "../../main"
-import {ListeningServer, Server} from "../../server"
+import {ListeningServer, serve} from "../../server"
 import {Client} from "./client"
 
 
@@ -50,10 +50,11 @@ export function useServer(schema: string): Client {
     let db = new Pool(db_config)
     let info: ListeningServer | undefined
     before(async () => {
-        info = await new Server({
+        info = await serve({
             db,
-            model: buildModel(buildSchema(parse(schema)))
-        }).listen(0)
+            model: buildModel(buildSchema(parse(schema))),
+            port: 0
+        })
         client.endpoint = `http://localhost:${info.port}/graphql`
     })
     after(() => info?.stop())

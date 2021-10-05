@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import {Pool, PoolConfig} from "pg"
-import {Server} from "./server"
+import {serve} from "./server"
 import {loadModel} from "./tools"
 
 
@@ -22,7 +22,7 @@ function main() {
     let db = new Pool(readDbConfig())
     let port = process.env.GRAPHQL_SERVER_PORT || 3000
 
-    new Server({model, db}).listen(port).then(
+    serve({model, db, port}).then(
         () => {
             console.log('OpenReader is listening on port ' + port)
         },

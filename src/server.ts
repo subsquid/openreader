@@ -1,7 +1,7 @@
 import type {IResolvers} from "@graphql-tools/utils"
-import {ApolloServerPluginDrainHttpServer} from "apollo-server-core"
+import {ApolloServerPluginDrainHttpServer, Context, ContextFunction} from "apollo-server-core"
 import type {PluginDefinition} from "apollo-server-core/src/types"
-import {ApolloServer} from "apollo-server-express"
+import {ApolloServer, ExpressContext} from "apollo-server-express"
 import assert from "assert"
 import express from "express"
 import fs from "fs"
@@ -11,10 +11,11 @@ import path from "path"
 import type {Pool} from "pg"
 import {buildServerSchema} from "./gql/opencrud"
 import type {Model} from "./model"
-import {buildResolvers, ResolverContext} from "./resolver"
+import {buildResolvers} from "./resolver"
 
 
 export type ResolversMap = IResolvers
+export {PluginDefinition}
 
 
 export interface ListeningServer {
@@ -26,101 +27,106 @@ export interface ListeningServer {
 export interface ServerOptions {
     model: Model
     db: Pool
+    port: number | string
+    graphiqlConsole?: boolean
+    customTypeDefs?: [DocumentNode]
+    customResolvers?: ResolversMap
+    customContext?: (ctx: ExpressContext) => Promise<Record<string, any>>
+    customPlugins?: PluginDefinition[]
+    applyCustomMiddlewares?: (app: express.Application) => void
 }
 
 
-export class Server {
-    private db: Pool
-    private model: Model
-
-    constructor(options: ServerOptions) {
-        this.db = options.db
-        this.model = options.model
+export async function serve(options: ServerOptions): Promise<ListeningServer> {
+    let resolvers = {
+        ...buildResolvers(options.model),
+        ...options.customResolvers
     }
 
-    buildTypeDefs(): DocumentNode[] {
-        return [buildServerSchema(this.model)]
-    }
+    let typeDefs = [
+        buildServerSchema(options.model),
+        ...(options.customTypeDefs || [])
+    ]
 
-    buildResolvers(): ResolversMap {
-        return buildResolvers(this.model)
-    }
-
-    buildContext(): () => Promise<ResolverContext> {
-        return async () => {
-            return {openReaderDatabase: this.db}
+    let openReaderDatabase = options.db
+    let context: Context | ContextFunction
+    if (options.customContext) {
+        let customContext = options.customContext
+        context = async (ctx) => {
+            return {openReaderDatabase, ...(await customContext(ctx))}
         }
+    } else {
+        context = {openReaderDatabase}
     }
 
-    buildPlugins(): PluginDefinition[] {
-        return []
+    let app = express()
+    let server = http.createServer(app)
+    let apollo = new ApolloServer({
+        typeDefs,
+        resolvers,
+        context,
+        plugins: [
+            ...(options.customPlugins || []),
+            ApolloServerPluginDrainHttpServer({httpServer: server})
+        ]
+    })
+
+    await apollo.start()
+
+    options.applyCustomMiddlewares?.(app)
+    if (options.graphiqlConsole !== false) {
+        setupGraphiqlConsole(app)
     }
+    apollo.applyMiddleware({app})
 
-    applyConsole(app: express.Application): void {
-        let assets = path.join(
-            require.resolve('@subsquid/graphiql-console/package.json'),
-            '../build'
-        )
+    return new Promise((resolve, reject) => {
+        function onerror(err: Error) {
+            cleanup()
+            reject(err)
+        }
 
-        let indexHtml = fs.readFileSync(path.join(assets, 'index.html'), 'utf-8')
-            .replace(/\/static\//g, 'console/static/')
-            .replace('/manifest.json', 'console/manifest.json')
-            .replace('${GRAPHQL_API}', 'graphql')
-            .replace('${APP_TITLE}', 'Query node playground')
+        function onlistening() {
+            cleanup()
+            let address = server.address()
+            assert(address != null && typeof address == 'object')
+            resolve({
+                port: address.port,
+                stop: () => apollo.stop()
+            })
+        }
 
-        app.use('/console', express.static(assets))
+        function cleanup() {
+            server.removeListener('error', onerror)
+            server.removeListener('listening', onlistening)
+        }
 
-        app.use('/graphql', (req, res, next) => {
-            if (req.path != '/') return next()
-            if (req.method != 'GET' && req.method != 'HEAD') return next()
-            if (req.query['query']) return next()
-            res.vary('Accept')
-            if (!req.accepts('html')) return next()
-            res.type('html').send(indexHtml)
-        })
-    }
+        server.on('error', onerror)
+        server.on('listening', onlistening)
+        server.listen(options.port)
+    })
+}
 
-    async listen(port?: number | string): Promise<ListeningServer> {
-        let app = express()
-        let server = http.createServer(app)
-        let apollo = new ApolloServer({
-            typeDefs: this.buildTypeDefs(),
-            resolvers: this.buildResolvers(),
-            context: this.buildContext(),
-            plugins: [
-                ...this.buildPlugins(),
-                ApolloServerPluginDrainHttpServer({httpServer: server})
-            ]
-        })
 
-        await apollo.start()
-        this.applyConsole(app)
-        apollo.applyMiddleware({app})
+export function setupGraphiqlConsole(app: express.Application): void {
+    let assets = path.join(
+        require.resolve('@subsquid/graphiql-console/package.json'),
+        '../build'
+    )
 
-        return new Promise((resolve, reject) => {
-            function onerror(err: Error) {
-                cleanup()
-                reject(err)
-            }
+    let indexHtml = fs.readFileSync(path.join(assets, 'index.html'), 'utf-8')
+        .replace(/\/static\//g, 'console/static/')
+        .replace('/manifest.json', 'console/manifest.json')
+        .replace('${GRAPHQL_API}', 'graphql')
+        .replace('${APP_TITLE}', 'Query node playground')
 
-            function onlistening() {
-                cleanup()
-                let address = server.address()
-                assert(address != null && typeof address == 'object')
-                resolve({
-                    port: address.port,
-                    stop: () => apollo.stop()
-                })
-            }
+    app.use('/console', express.static(assets))
 
-            function cleanup() {
-                server.removeListener('error', onerror)
-                server.removeListener('listening', onlistening)
-            }
-
-            server.on('error', onerror)
-            server.on('listening', onlistening)
-            server.listen(port)
-        })
-    }
+    app.use('/graphql', (req, res, next) => {
+        if (req.path != '/') return next()
+        if (req.method != 'GET' && req.method != 'HEAD') return next()
+        if (req.query['query']) return next()
+        res.vary('Accept')
+        if (!req.accepts('html')) return next()
+        res.type('html').send(indexHtml)
+    })
 }
