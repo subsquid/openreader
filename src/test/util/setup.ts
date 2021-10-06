@@ -52,7 +52,7 @@ export function useServer(schema: string): Client {
     before(async () => {
         info = await serve({
             db,
-            model: buildModel(buildSchema(parse(schema))),
+            model: buildModel(buildSchema([parse(schema)])),
             port: 0
         })
         client.endpoint = `http://localhost:${info.port}/graphql`

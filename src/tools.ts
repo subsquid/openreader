@@ -1,15 +1,30 @@
-import fs from "fs"
+import * as fs from "fs"
+import * as path from "path"
 import {parse, Source} from "graphql"
 import {buildModel, buildSchema} from "./gql/schema"
 import type {Model} from "./model"
 
 
 export function loadModel(schemaFile: string): Model {
-    let src = new Source(
-        fs.readFileSync(schemaFile, 'utf-8'),
-        schemaFile
-    )
-    let doc = parse(src)
-    let schema = buildSchema(doc)
+    let files: string[] = []
+    if (fs.statSync(schemaFile).isDirectory()) {
+        fs.readdirSync(schemaFile, {withFileTypes: true}).forEach(item => {
+            if (item.isFile() && (item.name.endsWith('.graphql') || item.name.endsWith('.gql'))) {
+                files.push(path.join(schemaFile, item.name))
+            }
+        })
+    } else {
+        files.push(schemaFile)
+    }
+
+    let docs = files.map(f => {
+        let src = new Source(
+            fs.readFileSync(f, 'utf-8'),
+            f
+        )
+        return parse(src)
+    })
+
+    let schema = buildSchema(docs)
     return buildModel(schema)
 }

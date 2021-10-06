@@ -1,3 +1,4 @@
+import {mergeTypeDefs} from "@graphql-tools/merge"
 import assert from "assert"
 import {
     buildASTSchema,
@@ -34,7 +35,14 @@ const baseSchema = buildASTSchema(parse(`
 `))
 
 
-export function buildSchema(doc: DocumentNode): GraphQLSchema {
+export function buildSchema(docs: DocumentNode[]): GraphQLSchema {
+    if (docs.length == 0) return baseSchema
+    let doc: DocumentNode
+    if (docs.length == 1) {
+        doc = docs[0]
+    } else {
+        doc = mergeTypeDefs(docs)
+    }
     let schema = extendSchema(baseSchema, doc)
     let errors = validateSchema(schema).filter(err => !/query root/i.test(err.message))
     if (errors.length > 0) {
