@@ -5,7 +5,7 @@
  *    in JSON responses
  *    in graphql queries/schemas
  *    in jsonb database columns
- *    in database results (except DateTime)
+ *    in database results
  *
  * Database must support 2 way coercion between underlying database type and canonical representation
  * of a corresponding scalar.
@@ -97,10 +97,10 @@ export const scalars: Record<string, Scalar> = {
             return `(${exp})::timestamptz`
         },
         toStringCast(exp) {
-            return exp
+            return `to_char((${exp}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
         },
         toStringArrayCast(exp) {
-            return exp
+            return `array(select to_char(i at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') from unnest(${exp}) as i)`
         }
     },
     Bytes: {

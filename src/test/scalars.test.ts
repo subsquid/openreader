@@ -14,7 +14,7 @@ describe('scalars', function() {
         `insert into scalar (id, "string") values ('9', 'hello')`,
         `insert into scalar (id, "date_time", deep) values ('10', '2021-09-24T15:43:13.400Z', '{"dateTime": "2021-09-24T00:00:00.120Z"}'::jsonb)`,
         `insert into scalar (id, "date_time", deep) values ('11', '2021-09-24T00:00:00.000Z', '{"dateTime": "2021-09-24T00:00:00Z"}'::jsonb)`,
-        `insert into scalar (id, "date_time", deep) values ('12', '2021-09-24T01:00:00.001Z', '{"dateTime": "2021-09-24T00:00:00.1Z"}'::jsonb)`,
+        `insert into scalar (id, "date_time", deep) values ('12', '2021-09-24 02:00:00.001 +01:00', '{"dateTime": "2021-09-24T00:00:00.1Z"}'::jsonb)`,
         `insert into scalar (id, "bytes", deep) values ('13', decode('aa', 'hex'), '{"bytes": "0xaa"}'::jsonb)`,
         `insert into scalar (id, "bytes", deep) values ('14', decode('bb', 'hex'), '{"bytes": "0xCCDD"}'::jsonb)`,
         `insert into scalar (id, "enum") values ('15', 'A')`,
