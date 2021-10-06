@@ -13,6 +13,7 @@ import type {Pool} from "pg"
 import {buildServerSchema} from "./gql/opencrud"
 import type {Model} from "./model"
 import {buildResolvers} from "./resolver"
+import {Transaction} from "./transaction"
 
 
 export type ResolversMap = IResolvers
@@ -49,15 +50,18 @@ export async function serve(options: ServerOptions): Promise<ListeningServer> {
         ...(options.customTypeDefs || [])
     ]
 
-    let openReaderDatabase = options.db
+    let db = options.db
     let context: Context | ContextFunction
     if (options.customContext) {
         let customContext = options.customContext
         context = async (ctx) => {
-            return {openReaderDatabase, ...(await customContext(ctx))}
+            return {
+                openReaderTransaction: new Transaction(db),
+                ...(await customContext(ctx))
+            }
         }
     } else {
-        context = {openReaderDatabase}
+        context = () => ({openReaderTransaction: new Transaction(db)})
     }
 
     let app = express()
@@ -67,6 +71,15 @@ export async function serve(options: ServerOptions): Promise<ListeningServer> {
         resolvers,
         context,
         plugins: [
+            {
+                async requestDidStart() {
+                    return {
+                        willSendResponse(req: any) {
+                            return req.context.openReaderTransaction.close()
+                        }
+                    }
+                }
+            },
             ...(options.customPlugins || []),
             ApolloServerPluginDrainHttpServer({httpServer: server})
         ]

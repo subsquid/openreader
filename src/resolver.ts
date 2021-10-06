@@ -16,11 +16,12 @@ import {
 } from "./relayConnection"
 import {connectionRequestedFields, ftsRequestedFields, requestedFields} from "./requestedFields"
 import {getScalarResolvers} from "./scalars"
+import {Transaction} from "./transaction"
 import {ensureArray, lowerCaseFirst, toQueryListField, upperCaseFirst} from "./util"
 
 
 export interface ResolverContext {
-    openReaderDatabase: Pool
+    openReaderTransaction: Transaction
 }
 
 
@@ -32,30 +33,30 @@ export function buildResolvers(model: Model): IResolvers {
         let item = model[name]
         switch(item.kind) {
             case 'entity':
-                Query[toQueryListField(name)] = (source, args, context, info) => {
+                Query[toQueryListField(name)] = async (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
-                    return withTransaction(context,
-                        db => new QueryBuilder(model, db).executeSelect(name, args, fields)
-                    )
+                    let db = await context.openReaderTransaction.get()
+                    return new QueryBuilder(model, db).executeSelect(name, args, fields)
                 }
                 Query[`${lowerCaseFirst(name)}ById`] = async (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
-                    let result = await withTransaction(context,
-                        db => new QueryBuilder(model, db).executeSelect(name, {where: {id_eq: args.id}}, fields)
-                    )
+                    let db = await context.openReaderTransaction.get()
+                    let result = await new QueryBuilder(model, db)
+                        .executeSelect(name, {where: {id_eq: args.id}}, fields)
                     assert(result.length < 2)
                     return result[0]
                 }
                 Query[`${lowerCaseFirst(name)}ByUniqueInput`] = async (source, args, context, info) => {
                     let fields = requestedFields(model, name, info)
-                    let result = await withTransaction(context,
-                        db => new QueryBuilder(model, db).executeSelect(name, {where: {id_eq: args.where.id}}, fields)
-                    )
+                    let db = await context.openReaderTransaction.get()
+                    let result = await new QueryBuilder(model, db)
+                        .executeSelect(name, {where: {id_eq: args.where.id}}, fields)
                     assert(result.length < 2)
                     return result[0]
                 }
-                Query[toQueryListField(name) + 'Connection'] = (source, args, context, info) => {
-                    return withTransaction(context, db => resolveEntityConnection(model, name, args, info, db))
+                Query[toQueryListField(name) + 'Connection'] = async (source, args, context, info) => {
+                    let db = await context.openReaderTransaction.get()
+                    return resolveEntityConnection(model, name, args, info, db)
                 }
                 installFieldResolvers(name, item)
                 break
@@ -68,11 +69,10 @@ export function buildResolvers(model: Model): IResolvers {
                 }
                 break
             case 'fts':
-                Query[name] = (source, args, context, info) => {
+                Query[name] = async (source, args, context, info) => {
                     let fields = ftsRequestedFields(model, name, info)
-                    return withTransaction(context,
-                        db => new QueryBuilder(model, db).executeFulltextSearch(name, args, fields)
-                    )
+                    let db = await context.openReaderTransaction.get()
+                    return new QueryBuilder(model, db).executeFulltextSearch(name, args, fields)
                 }
                 resolvers[`${upperCaseFirst(name)}_Item`] = {
                     __resolveType: resolveUnionType
@@ -189,21 +189,4 @@ async function resolveEntityConnection(
     }
 
     return response
-}
-
-
-async function withTransaction<T>(context: ResolverContext, cb: (db: ClientBase) => Promise<T>): Promise<T> {
-    let client = await context.openReaderDatabase.connect()
-    try {
-        await client.query('START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY')
-        return await cb(client)
-    } finally {
-        try {
-            await client.query('COMMIT')
-        } catch(e: any) {
-            // ignore
-        } finally {
-            client.release()
-        }
-    }
 }
