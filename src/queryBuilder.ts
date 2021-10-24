@@ -45,6 +45,7 @@ export class QueryBuilder {
             this.ident.bind(this),
             this.aliases,
             join,
+            entityName,
             entity,
             alias,
             ''
@@ -575,6 +576,7 @@ class Cursor {
         private ident: (name: string) => string,
         private aliases: AliasSet,
         private join: JoinSet,
+        private name: string,
         public readonly object: Entity | JsonObject,
         private alias: string,
         private prefix: string
@@ -619,6 +621,7 @@ class Cursor {
     }
 
     child(propName: string): Cursor {
+        let name: string
         let object: Entity | JsonObject
         let alias: string
         let prefix: string
@@ -626,28 +629,32 @@ class Cursor {
         let prop = this.object.properties[propName]
         switch(prop.type.kind) {
             case 'object':
-                object = getObject(this.model, prop.type.name)
+                name = prop.type.name
+                object = getObject(this.model, name)
                 alias = this.alias
                 prefix = this.field(propName)
                 break
             case 'union':
-                object = getUnionProps(this.model, prop.type.name)
+                name = prop.type.name
+                object = getUnionProps(this.model, name)
                 alias = this.alias
                 prefix = this.field(propName)
                 break
             case 'fk':
-                object = getEntity(this.model, prop.type.foreignEntity)
+                name = prop.type.foreignEntity
+                object = getEntity(this.model, name)
                 alias = this.join.add(
-                    toTable(prop.type.foreignEntity),
+                    toTable(name),
                     '"id"',
                     this.fk(propName)
                 )
                 prefix = ''
                 break
             case 'lookup':
-                object = getEntity(this.model, prop.type.entity)
+                name = prop.type.entity
+                object = getEntity(this.model, name)
                 alias = this.join.add(
-                    toTable(prop.type.entity),
+                    toTable(name),
                     this.ident(toFkColumn(prop.type.field)),
                     this.field('id')
                 )
@@ -662,6 +669,7 @@ class Cursor {
             this.ident,
             this.aliases,
             this.join,
+            name,
             object,
             alias,
             prefix
@@ -694,7 +702,10 @@ class Cursor {
 
     doc(queryName: string): string {
         assert(this.object.kind == 'entity')
-        return this.ident(this.alias) + '.' + this.ident(snakeCase(queryName) + '_doc')
+        let query = getFtsQuery(this.model, queryName)
+        let src = query.sources.find(src => src.entity == this.name)
+        assert(src != null)
+        return src.fields.map(f => `coalesce(${this.field(f)}, '')`).join(` || E'\\n\\n' || `)
     }
 }
 

@@ -4,25 +4,19 @@ function tsvector(columns: string[]) {
     return columns.map(col => `setweight(to_tsvector('english', coalesce(${col}, '')), 'A')`).join(' || ')
 }
 
-function doc(columns: string[]) {
-    return columns.map(col => `coalesce(${col}, '')`).join(` || E'\\n\\n' || `)
-}
-
 describe('full text search', function () {
     useDatabase([
         `create table foo (
             id text primary key, 
             foo int, 
             comment text, 
-            search_tsv tsvector generated always as ( ${tsvector(['comment'])} ) stored,
-            search_doc text generated always as ( ${doc(['comment'])} ) stored
+            search_tsv tsvector generated always as ( ${tsvector(['comment'])} ) stored
         )`,
         `create table bar (
             id text primary key, 
             bar text, 
             description text, 
-            search_tsv tsvector generated always as ( ${tsvector(['bar', 'description'])} ) stored,
-            search_doc text generated always as ( ${doc(['bar', 'description'])} ) stored
+            search_tsv tsvector generated always as ( ${tsvector(['bar', 'description'])} ) stored
         )`,
         `insert into foo (id, foo, comment) values ('1', 1, 'Some man greeted me with hello')`,
         `insert into foo (id, foo, comment) values ('2', 2, 'Deeply buried lorem ipsum dolor sit amet, then comes baz')`,
