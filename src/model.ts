@@ -45,6 +45,10 @@ export interface Prop {
     type: PropType
     nullable: boolean
     description?: string
+    /**
+     * Whether the values in the column must be unique. Applicable only to entities.
+     */
+    unique?: boolean
 }
 
 
@@ -55,7 +59,8 @@ export type PropType =
     ObjectPropType |
     UnionPropType |
     FkPropType |
-    ListRelPropType
+    LookupPropType |
+    ListLookupPropType
 
 
 export interface ScalarPropType {
@@ -94,8 +99,15 @@ export interface FkPropType {
 }
 
 
-export interface ListRelPropType {
-    kind: 'list-relation'
+export interface LookupPropType {
+    kind: 'lookup'
+    entity: Name
+    field: Name
+}
+
+
+export interface ListLookupPropType {
+    kind: 'list-lookup'
     entity: Name
     field: Name
 }

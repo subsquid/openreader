@@ -74,7 +74,7 @@ export function generateOpenCrudQueries(model: Model): string {
                 let prop = object.properties[key]
                 let gqlType = renderPropType(prop)
                 generateDescription(prop.description)
-                if (prop.type.kind == 'list-relation') {
+                if (prop.type.kind == 'list-lookup') {
                     out.line(`${key}${manyArguments(prop.type.entity)}: ${gqlType}`)
                 } else {
                     out.line(`${key}: ${gqlType}`)
@@ -90,7 +90,9 @@ export function generateOpenCrudQueries(model: Model): string {
                 return `[${renderPropType(prop.type.item)}]${prop.nullable ? '' : '!'}`
             case 'fk':
                 return `${prop.type.foreignEntity}${prop.nullable ? '' : '!'}`
-            case "list-relation":
+            case 'lookup':
+                return prop.type.entity
+            case 'list-lookup':
                 return `[${prop.type.entity}!]!`
             default:
                 return prop.type.name + (prop.nullable ? '' : '!')
@@ -159,7 +161,10 @@ export function generateOpenCrudQueries(model: Model): string {
                 case 'fk':
                     out.line(`${key}: ${prop.type.foreignEntity}WhereInput`)
                     break
-                case 'list-relation':
+                case 'lookup':
+                    out.line(`${key}: ${prop.type.entity}WhereInput`)
+                    break
+                case 'list-lookup':
                     out.line(`${key}_every: ${prop.type.entity}WhereInput`)
                     out.line(`${key}_some: ${prop.type.entity}WhereInput`)
                     out.line(`${key}_none: ${prop.type.entity}WhereInput`)

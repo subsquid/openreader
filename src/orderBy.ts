@@ -64,6 +64,11 @@ function buildOrderByMapping(model: Model, typeName: string, depth: number): Ope
                     m.set(key + '_' + name, {[key]: spec})
                 }
                 break
+            case 'lookup':
+                for (let [name, spec] of buildOrderByMapping(model, propType.entity, depth - 1)) {
+                    m.set(key + '_' + name, {[key]: spec})
+                }
+                break
         }
     }
     return m

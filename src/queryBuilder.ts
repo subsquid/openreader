@@ -1,7 +1,7 @@
 import assert from "assert"
 import type {ClientBase, QueryArrayResult} from "pg"
 import type {Entity, JsonObject, Model} from "./model"
-import {getEntity, getFtsQuery, getUnionProps} from "./model.tools"
+import {getEntity, getFtsQuery, getObject, getUnionProps} from "./model.tools"
 import {OpenCrudOrderByValue, OrderBy, parseOrderBy} from "./orderBy"
 import type {FtsRequestedFields, RequestedFields} from "./requestedFields"
 import {fromJsonCast, fromJsonToOutputCast, toOutputArrayCast, toOutputCast} from "./scalars"
@@ -38,7 +38,7 @@ export class QueryBuilder {
         let entity = getEntity(this.model, entityName)
         let table = toTable(entityName)
         let alias = this.aliases.add(table)
-        let join = new FkJoinSet(this.aliases)
+        let join = new JoinSet(this.aliases)
 
         let cursor = new Cursor(
             this.model,
@@ -102,9 +102,11 @@ export class QueryBuilder {
             this.populateOrderBy(orderByExps, cursor, orderBy)
         }
 
-        if (join.isNotEmpty()) {
-            out += join.render(name => this.ident(name))
-        }
+        join.forEach(j => {
+            let table = this.ident(j.table)
+            let alias = this.ident(j.alias)
+            out += `\nLEFT OUTER JOIN ${table} ${alias} ON ${alias}.${j.column} = ${j.rhs}`
+        })
 
         if (whereExps.length) {
             out += '\nWHERE ' + whereExps.join(' AND ')
@@ -146,6 +148,7 @@ export class QueryBuilder {
                 case 'object':
                 case 'union':
                 case 'fk':
+                case 'lookup':
                     assert(typeof spec == 'object')
                     this.populateOrderBy(
                         exps,
@@ -191,7 +194,8 @@ export class QueryBuilder {
                             req.children
                         )
                         break
-                    case 'fk': {
+                    case 'fk':
+                    case 'lookup': {
                         let cu = cursor.child(fieldName)
                         req.index = columns.add(cu.transport('id'))
                         this.populateColumns(
@@ -201,7 +205,7 @@ export class QueryBuilder {
                         )
                         break
                     }
-                    case 'list-relation':
+                    case 'list-lookup':
                         req.index = columns.add(
                             'array(' + this.select(field.propType.entity, req.args, req.children, {
                                 kind: 'list-subquery',
@@ -227,7 +231,7 @@ export class QueryBuilder {
                 case 'every':
                     if (hasConditions(opArg)) {
                         let rel = cursor.object.properties[f.field].type
-                        assert(rel.kind == 'list-relation')
+                        assert(rel.kind == 'list-lookup')
                         let conditionedFrom = this.select(
                             rel.entity,
                             {where: opArg},
@@ -246,7 +250,7 @@ export class QueryBuilder {
                 case 'some':
                 case 'none':
                     let rel = cursor.object.properties[f.field].type
-                    assert(rel.kind == 'list-relation')
+                    assert(rel.kind == 'list-lookup')
                     let q = '(SELECT true ' + this.select(
                         rel.entity,
                         {where: opArg},
@@ -371,7 +375,8 @@ export class QueryBuilder {
                 }
                 break
             }
-            case 'fk': {
+            case 'fk':
+            case 'lookup': {
                 assert(op == '-')
                 if (hasConditions(arg)) {
                     exps.push(
@@ -422,14 +427,15 @@ export class QueryBuilder {
                         }
                         break
                     }
-                    case 'fk': {
+                    case 'fk':
+                    case 'lookup': {
                         let id = row[req.index]
                         if (id != null) {
                             rec[req.alias] = this.mapRow(row, req.children)
                         }
                         break
                     }
-                    case 'list-relation':
+                    case 'list-lookup':
                         rec[req.alias] = this.toResult(row[req.index], req.children)
                         break
                     default:
@@ -459,7 +465,6 @@ export class QueryBuilder {
     }
 
     private query(sql: string): Promise<QueryArrayResult> {
-        // console.log('\n' + sql)
         return this.db.query({text: sql, rowMode: 'array'}, this.params)
     }
 
@@ -558,17 +563,22 @@ interface ListSubquery {
 }
 
 
+/**
+ * A pointer to an entity or nested json object within SQL query.
+ *
+ * It has convenience methods for building various SQL expressions
+ * related to individual properties of an entity or an object it points to.
+ */
 class Cursor {
     constructor(
         private model: Model,
         private ident: (name: string) => string,
         private aliases: AliasSet,
-        private join: FkJoinSet,
+        private join: JoinSet,
         public readonly object: Entity | JsonObject,
         private alias: string,
         private prefix: string
-    ) {
-    }
+    ) {}
 
     transport(propName: string): string {
         let prop = this.object.properties[propName]
@@ -616,7 +626,7 @@ class Cursor {
         let prop = this.object.properties[propName]
         switch(prop.type.kind) {
             case 'object':
-                object = this.model[prop.type.name] as JsonObject
+                object = getObject(this.model, prop.type.name)
                 alias = this.alias
                 prefix = this.field(propName)
                 break
@@ -626,10 +636,20 @@ class Cursor {
                 prefix = this.field(propName)
                 break
             case 'fk':
-                object = this.model[prop.type.foreignEntity] as Entity
+                object = getEntity(this.model, prop.type.foreignEntity)
                 alias = this.join.add(
                     toTable(prop.type.foreignEntity),
+                    '"id"',
                     this.fk(propName)
+                )
+                prefix = ''
+                break
+            case 'lookup':
+                object = getEntity(this.model, prop.type.entity)
+                alias = this.join.add(
+                    toTable(prop.type.entity),
+                    this.ident(toFkColumn(prop.type.field)),
+                    this.field('id')
                 )
                 prefix = ''
                 break
@@ -702,46 +722,38 @@ class ColumnSet {
 
 
 /**
- * LEFT OUTER JOIN {table} {alias} on {alias}.id = {on}
+ * LEFT OUTER JOIN "{table}" "{alias}" ON "{alias}".{column} = {rhs}
  */
-interface FK_Join {
+interface Join {
     table: string
     alias: string
-    on: string
+    column: string
+    rhs: string
 }
 
 
-class FkJoinSet {
-    private joins: Map<string, FK_Join> = new Map()
+class JoinSet {
+    private joins: Map<string, Join> = new Map()
 
-    constructor(private aliases: AliasSet) {
-    }
+    constructor(private aliases: AliasSet) {}
 
-    add(table: string, on: string): string {
-        let key = table + '  ' + on
+    add(table: string, column: string, rhs: string): string {
+        let key = `${table} ${column} ${rhs}`
         let e = this.joins.get(key)
         if (!e) {
             e = {
                 table,
                 alias: this.aliases.add(table),
-                on
+                column,
+                rhs
             }
             this.joins.set(key, e)
         }
         return e.alias
     }
 
-    isNotEmpty() {
-        return this.joins.size > 0
-    }
-
-    render(escapeIdentifier: (name: string) => string): string {
-        let e = escapeIdentifier
-        let out = ''
-        this.joins.forEach(join => {
-            out += `\nLEFT OUTER JOIN ${e(join.table)} ${e(join.alias)} ON ${e(join.alias)}."id" = ${join.on}`
-        })
-        return out
+    forEach(cb: (join: Join) => void): void {
+        this.joins.forEach(join => cb(join))
     }
 }
 

@@ -34,9 +34,11 @@ export function buildUnionProps(model: Model, unionName: string): JsonObject {
 }
 
 
-export function validateModel(model: Model) { // TODO: check all invariants we assume
+export function validateModel(model: Model) {
+    // TODO: check all invariants we assume
     validateNames(model)
     validateUnionTypes(model)
+    validateLookups(model)
 }
 
 
@@ -94,13 +96,55 @@ export function validateUnionTypes(model: Model): void {
 }
 
 
+export function validateLookups(model: Model): void {
+    for (let name in model) {
+        let item = model[name]
+        switch(item.kind) {
+            case 'object':
+            case 'interface':
+                for (let key in item.properties) {
+                    let prop = item.properties[key]
+                    if (prop.type.kind == 'lookup' || prop.type.kind == 'list-lookup') {
+                        throw invalidProperty(name, key, `lookups are only supported on entity types`)
+                    }
+                }
+                break
+            case 'entity':
+                for (let key in item.properties) {
+                    let prop = item.properties[key]
+                    if (prop.type.kind == 'lookup' && !prop.nullable) {
+                        throw invalidProperty(name, key, 'one-to-one lookups must be nullable')
+                    }
+                    if (prop.type.kind == 'lookup' || prop.type.kind == 'list-lookup') {
+                        let lookupEntity = getEntity(model, prop.type.entity)
+                        let lookupProperty = lookupEntity.properties[prop.type.field]
+                        if (lookupProperty?.type.kind != 'fk' || lookupProperty.type.foreignEntity != name) {
+                            throw invalidProperty(name, key, `${prop.type.entity}.${prop.type.field} is not a foreign key pointing to ${name}`)
+                        }
+                        if (prop.type.kind == 'lookup' && !lookupProperty.unique) {
+                            throw invalidProperty(name, key, `${prop.type.entity}.${prop.type.field} is not @unique`)
+                        }
+                    }
+                }
+                break
+        }
+    }
+}
+
+
+function invalidProperty(item: string, key: string, msg: string): Error {
+    return new Error(`Invalid property ${item}.${key}: ${msg}`)
+}
+
+
 export function propTypeEquals(a: PropType, b: PropType): boolean {
     if (a.kind != b.kind) return false
     if (a.kind == 'list') return propTypeEquals(a.item.type, (b as typeof a).item.type)
     switch(a.kind) {
         case 'fk':
             return a.foreignEntity == (b as typeof a).foreignEntity
-        case 'list-relation':
+        case 'lookup':
+        case 'list-lookup':
             return a.entity == (b as typeof a).entity && a.field == (b as typeof a).field
         default:
             return a.name == (b as typeof a).name
@@ -110,13 +154,20 @@ export function propTypeEquals(a: PropType, b: PropType): boolean {
 
 export function getEntity(model: Model, name: string): Entity {
     let entity = model[name]
-    assert(entity.kind == 'entity')
+    assert(entity.kind == 'entity', `${name} expected to be an entity`)
     return entity
+}
+
+
+export function getObject(model: Model, name: string): JsonObject {
+    let object = model[name]
+    assert(object.kind == 'object', `${name} expected to be an object`)
+    return object
 }
 
 
 export function getFtsQuery(model: Model, name: string): FTS_Query {
     let query = model[name]
-    assert(query.kind == 'fts')
+    assert(query.kind == 'fts', `${name} expected to be FTS query`)
     return query
 }

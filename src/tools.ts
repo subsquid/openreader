@@ -1,3 +1,4 @@
+import {mergeTypeDefs} from "@graphql-tools/merge"
 import * as fs from "fs"
 import * as path from "path"
 import {parse, Source} from "graphql"
@@ -25,6 +26,8 @@ export function loadModel(schemaFile: string): Model {
         return parse(src)
     })
 
-    let schema = buildSchema(docs)
+    if (docs.length == 0) return {}
+    let doc = docs.length == 1 ? docs[0] : mergeTypeDefs(docs)
+    let schema = buildSchema(doc)
     return buildModel(schema)
 }

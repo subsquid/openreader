@@ -17,7 +17,7 @@ import {
 import {connectionRequestedFields, ftsRequestedFields, requestedFields} from "./requestedFields"
 import {getScalarResolvers} from "./scalars"
 import {Transaction} from "./transaction"
-import {ensureArray, lowerCaseFirst, toQueryListField, upperCaseFirst} from "./util"
+import {ensureArray, lowerCaseFirst, toQueryListField, unsupportedCase, upperCaseFirst} from "./util"
 
 
 export interface ResolverContext {
@@ -84,13 +84,21 @@ export function buildResolvers(model: Model): IResolvers {
     function installFieldResolvers(name: string, object: Entity | JsonObject): void {
         let fields: Record<string, IFieldResolver<any, any>> = {}
         for (let key in object.properties) {
-            switch(object.properties[key].type.kind) {
+            let kind = object.properties[key].type.kind
+            switch(kind) {
                 case 'object':
                 case 'union':
                 case 'fk':
-                case 'list-relation':
+                case 'lookup':
+                case 'list-lookup':
                     fields[key] = aliasResolver
                     break
+                case 'scalar':
+                case 'enum':
+                case 'list':
+                    break
+                default:
+                    throw unsupportedCase(kind)
             }
         }
         resolvers[name] = fields

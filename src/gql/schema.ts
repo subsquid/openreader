@@ -1,4 +1,3 @@
-import {mergeTypeDefs} from "@graphql-tools/merge"
 import assert from "assert"
 import {
     buildASTSchema,
@@ -18,7 +17,6 @@ import {
     parse,
     validateSchema
 } from "graphql"
-import {DirectiveNode} from "graphql/language/ast"
 import {Model, Prop, PropType} from "../model"
 import {validateModel} from "../model.tools"
 import {scalars_list} from "../scalars"
@@ -35,14 +33,7 @@ const baseSchema = buildASTSchema(parse(`
 `))
 
 
-export function buildSchema(docs: DocumentNode[]): GraphQLSchema {
-    if (docs.length == 0) return baseSchema
-    let doc: DocumentNode
-    if (docs.length == 1) {
-        doc = docs[0]
-    } else {
-        doc = mergeTypeDefs(docs)
-    }
+export function buildSchema(doc: DocumentNode): GraphQLSchema {
     let schema = extendSchema(baseSchema, doc)
     let errors = validateSchema(schema).filter(err => !/query root/i.test(err.message))
     if (errors.length > 0) {
@@ -100,7 +91,7 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
                 && fields.id.type.ofType instanceof GraphQLScalarType
                 && fields.id.type.ofType.name === 'ID'
             if (!correctIdType) {
-                throw unsupportedFieldTypeError(type.name, 'id')
+                throw unsupportedFieldTypeError(type.name + '.id')
             }
         }
     }
@@ -110,6 +101,8 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
         let fieldType = f.type
         let nullable = true
         let description = f.description || undefined
+        let propName = `${type.name}.${f.name}`
+        let unique = f.astNode?.directives?.some(d => d.name.value == 'unique')
         handleFulltextDirective(model, type, f)
         if (fieldType instanceof GraphQLNonNull) {
             nullable = false
@@ -148,37 +141,59 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
             }
         } else if (fieldType instanceof GraphQLObjectType) {
             if (isEntityType(fieldType)) {
+                let derivedFrom = f.astNode?.directives?.filter(d => d.name.value == 'derivedFrom').map(d => {
+                    let valueNode = d.arguments?.[0].value
+                    assert(valueNode != null)
+                    assert(valueNode.kind == 'StringValue')
+                    return valueNode.value
+                })[0]
+
                 switch(list.nulls.length) {
                     case 0:
-                        properties[key] = {
-                            type: {
-                                kind: 'fk',
-                                foreignEntity: fieldType.name
-                            },
-                            nullable,
-                            description
+                        if (derivedFrom) {
+                            if (!nullable) {
+                                throw new SchemaError(`Property ${propName} must be nullable`)
+                            }
+                            properties[key] = {
+                                type: {
+                                    kind: 'lookup',
+                                    entity: fieldType.name,
+                                    field: derivedFrom
+                                },
+                                nullable,
+                                description
+                            }
+                        } else {
+                            if (unique && nullable) {
+                                throw new SchemaError(`Unique property ${propName} must be non-nullable`)
+                            }
+                            properties[key] = {
+                                type: {
+                                    kind: 'fk',
+                                    foreignEntity: fieldType.name
+                                },
+                                nullable,
+                                unique,
+                                description
+                            }
                         }
                         break
                     case 1:
-                        let derivedFrom: DirectiveNode | undefined = f.astNode?.directives?.find(d => d.name.value == 'derivedFrom')
                         if (derivedFrom == null) {
-                            throw new Error(`@derivedFrom directive is required on ${type.name}.${key} declaration`)
+                            throw new SchemaError(`@derivedFrom directive is required on ${propName} declaration`)
                         }
-                        let derivedFromValueNode = derivedFrom.arguments?.[0].value
-                        assert(derivedFromValueNode != null)
-                        assert(derivedFromValueNode.kind == 'StringValue')
                         properties[key] = {
                             type: {
-                                kind: 'list-relation',
+                                kind: 'list-lookup',
                                 entity: fieldType.name,
-                                field: derivedFromValueNode.value
+                                field: derivedFrom
                             },
                             nullable: false,
                             description
                         }
                         break
                     default:
-                        throw unsupportedFieldTypeError(type.name, key)
+                        throw unsupportedFieldTypeError(propName)
                 }
             } else {
                 addEntityOrJsonObjectOrInterface(model, fieldType)
@@ -192,7 +207,7 @@ function addEntityOrJsonObjectOrInterface(model: Model, type: GraphQLObjectType 
                 }
             }
         } else {
-            throw unsupportedFieldTypeError(type.name, key)
+            throw unsupportedFieldTypeError(propName)
         }
     }
 
@@ -314,6 +329,9 @@ function wrapWithList(nulls: boolean[], dataType: PropType): PropType {
 }
 
 
-function unsupportedFieldTypeError(type: string, field: string): Error {
-    return new Error(`Property ${type}.${field} has unsupported type`)
+function unsupportedFieldTypeError(propName: string): Error {
+    return new SchemaError(`Property ${propName} has unsupported type`)
 }
+
+
+export class SchemaError extends Error {}

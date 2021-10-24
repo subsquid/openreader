@@ -70,7 +70,14 @@ function collectRequestedFields(model: Model, objectName: string, schema: GraphQ
                     index: 0
                 })
                 break
-            case 'list-relation':
+            case 'lookup':
+                addRequest(requested, f.name, propType, {
+                    alias,
+                    children: collectRequestedFields(model, propType.entity, schema, f),
+                    index: 0
+                })
+                break
+            case 'list-lookup':
                 addRequest(requested, f.name, propType, {
                     alias,
                     args: f.args,
