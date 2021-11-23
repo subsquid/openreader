@@ -4,7 +4,7 @@ describe('scalars', function() {
     useDatabase([
         `create table scalar (id text primary key, "boolean" bool, "bigint" numeric, "string" text, enum text, date_time timestamptz, "bytes" bytea, deep jsonb)`,
         `insert into scalar (id, "boolean") values ('1', true)`,
-        `insert into scalar (id, "boolean") values ('2', false)`,
+        `insert into scalar (id, "boolean", deep) values ('2', false, '{"boolean": true}'::jsonb)`,
         `insert into scalar (id, "bigint", deep) values ('3', 1000000000000000000000000000000000000, '{"bigint": "1000000000000000000000000000000000000"}'::jsonb)`,
         `insert into scalar (id, "bigint", deep) values ('4', 2000000000000000000000000000000000000, '{"bigint": "2000000000000000000000000000000000000"}'::jsonb)`,
         `insert into scalar (id, "bigint", deep) values ('5', 5, '{"bigint": "5"}'::jsonb)`,
@@ -38,6 +38,7 @@ describe('scalars', function() {
             bigint: BigInt
             dateTime: DateTime
             bytes: Bytes
+            boolean: Boolean
         }
         
         enum Enum {
@@ -58,6 +59,22 @@ describe('scalars', function() {
                 scalars: [
                     {id: '1', boolean: true},
                     {id: '2', boolean: false}
+                ]
+            })
+        })
+
+        it('output from nested object', function () {
+            return client.test(`
+                query {
+                    scalars(where: {id_eq: "2"}) {
+                       deep {
+                            boolean
+                       } 
+                    }
+                }
+            `, {
+                scalars: [
+                    {deep: {boolean: true}}
                 ]
             })
         })

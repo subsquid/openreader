@@ -223,9 +223,11 @@ export function toOutputArrayCast(scalarType: string, sqlExp: string): string {
 export function fromJsonCast(scalarType: string, objSqlExp: string, prop: string): string {
     switch(scalarType) {
         case 'Int':
-            return `(${objSqlExp}->>'${prop}')::integer`
+            return `(${objSqlExp}->'${prop}')::integer`
         case 'Float':
-            return `(${objSqlExp}->>'${prop}')::numeric`
+            return `(${objSqlExp}->'${prop}')::numeric`
+        case 'Boolean':
+            return `(${objSqlExp}->'${prop}')::bool`
         default:
             return fromStringCast(scalarType, `${objSqlExp}->>'${prop}'`)
     }
@@ -238,6 +240,8 @@ export function fromJsonToOutputCast(scalarType: string, objSqlExp: string, prop
             return `(${objSqlExp}->'${prop}')::integer`
         case 'Float':
             return `(${objSqlExp}->'${prop}')::numeric`
+        case 'Boolean':
+            return `(${objSqlExp}->'${prop}')::bool`
         default:
             return `${objSqlExp}->>'${prop}'`
     }
