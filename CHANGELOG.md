@@ -1,3 +1,7 @@
+## 0.2.1 (2021-11-23)
+
+* fix: can't request a boolean property of a json object
+
 ## 0.2.0 (2021-10-24)
 
 * new: support for one-to-one lookups
