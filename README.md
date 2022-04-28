@@ -1,6 +1,6 @@
 # OpenReader
 
-This repository is deprecated in favor of [Squid](https://github.com/subsquid/squid/tree/master/openreader) monorepo
+**This repository is deprecated in favor of [Squid](https://github.com/subsquid/squid/tree/master/openreader) monorepo**
 
 GraphQL server for Hydra. Given [hydra schema](https://docs.subsquid.io/schema-spec) 
 and compatible database it serves "read part" of [OpenCRUD spec](https://www.opencrud.org).
